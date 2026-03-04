@@ -23,7 +23,7 @@ def print_verify_result(label: str, result_body: Dict[str, Any]) -> None:
 
 def run_defi_demo() -> None:
     print("=== Test A: DeFi Safe-Pay ===")
-    aegis = Aegis(base_url="http://127.0.0.1:3000", batch_size=1, flush_interval_s=0.1)
+    aegis = Aegis(base_url="http://44.204.128.105", batch_size=1, flush_interval_s=0.1)
 
     policy = {"public_values": {"max_spend": 1000, "restricted_endpoints": ["/admin"]}}
     commitment = aegis.init(
@@ -53,7 +53,7 @@ def run_defi_demo() -> None:
 
 def run_enterprise_demo() -> None:
     print("=== Test B: Enterprise PII-Guard ===")
-    aegis = Aegis(base_url="http://127.0.0.1:3000", batch_size=1, flush_interval_s=0.1)
+    aegis = Aegis(base_url="http://44.204.128.105", batch_size=1, flush_interval_s=0.1)
 
     policy = {"public_values": {"restricted_endpoints": ["salary"]}}
     commitment = aegis.init(

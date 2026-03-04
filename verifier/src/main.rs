@@ -11,7 +11,8 @@ use dashmap::DashMap;
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 use serde_json::Value;
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tower_http::cors::CorsLayer;
+use tower_http::trace::TraceLayer;
 use axum::http::{header, Method};
 
 mod engine;
@@ -55,6 +56,29 @@ impl IntoResponse for AppError {
 
 type AppResult<T> = Result<T, AppError>;
 
+fn build_cors_layer() -> CorsLayer {
+    if let Ok(frontend_url) = std::env::var("FRONTEND_URL") {
+        let mut origins: Vec<_> = vec![
+            "http://localhost:3001".parse().unwrap(),
+            "http://127.0.0.1:3001".parse().unwrap(),
+        ];
+        for url in frontend_url.split(',') {
+            let trimmed = url.trim();
+            if !trimmed.is_empty() {
+                if let Ok(hv) = trimmed.parse() {
+                    origins.push(hv);
+                }
+            }
+        }
+        CorsLayer::new()
+            .allow_origin(origins)
+            .allow_methods([Method::POST, Method::OPTIONS])
+            .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
+    } else {
+        CorsLayer::permissive()
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let state = AppState {
@@ -62,14 +86,7 @@ async fn main() -> anyhow::Result<()> {
         signing_key: Arc::new(SigningKey::generate(&mut OsRng)),
     };
 
-    let allowed_origins = [
-        "http://localhost:3001".parse().unwrap(),
-        "http://127.0.0.1:3001".parse().unwrap(),
-    ];
-    let cors = CorsLayer::new()
-        .allow_origin(allowed_origins)
-        .allow_methods([Method::POST, Method::OPTIONS])
-        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
+    let cors = build_cors_layer();
 
     let app = Router::new()
         .route("/v1/register", post(register_handler))

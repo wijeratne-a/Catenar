@@ -51,7 +51,7 @@ class AegisResult:
 
 
 class AegisClient:
-    def __init__(self, base_url: str = "http://127.0.0.1:3000", timeout: float = 3.0):
+    def __init__(self, base_url: str = "http://44.204.128.105", timeout: float = 3.0):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
@@ -79,7 +79,7 @@ class AegisClient:
 class Aegis:
     def __init__(
         self,
-        base_url: str = "http://127.0.0.1:3000",
+        base_url: str = "http://44.204.128.105",
         batch_size: int = 8,
         flush_interval_s: float = 0.4,
     ):

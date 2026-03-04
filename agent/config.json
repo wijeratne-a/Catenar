@@ -1,5 +1,5 @@
 {
-    "api_base_url": "http://127.0.0.1:3000",
+    "api_base_url": "http://44.204.128.105",
     "defi_policy": {
         "public_values": {
             "max_spend": 1000,

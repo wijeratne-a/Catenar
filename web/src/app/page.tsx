@@ -83,7 +83,7 @@ export default function Home() {
               <pre className="overflow-x-auto rounded-lg bg-muted/50 p-4 font-mono text-sm">
                 <code>{`from aegis_sdk import Aegis
 
-aegis = Aegis(base_url="http://127.0.0.1:3000")
+aegis = Aegis(base_url="https://your-verifier-host")
 policy = {"public_values": {"max_spend": 1000, "restricted_endpoints": ["/admin"]}}
 commitment = aegis.init(policy, domain="defi", public_values=policy["public_values"])
 

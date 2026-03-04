@@ -8,7 +8,7 @@ import { usePolicyStore } from "@/lib/policy-store";
 import { toast } from "sonner";
 
 const POLICY_PLACEHOLDER = "YOUR_POLICY_COMMITMENT";
-const API_BASE = "http://127.0.0.1:3000";
+const API_BASE = process.env.NEXT_PUBLIC_VERIFIER_URL ?? "http://127.0.0.1:3000";
 
 function CopyButton({ text }: { text: string }) {
   async function handleCopy() {

@@ -88,8 +88,8 @@ export default function VerifyPlaygroundPage() {
     defaultValues: {
       domain: "defi",
       policy_commitment: "",
-      trace_entries: [{ action: "api_call", target: "https://dex.api/swap", amount: "500" }],
-      max_spend: "1000",
+      trace_entries: [{ action: "api_call", target: "https://dex.api/swap", amount: 500 }],
+      max_spend: 1000,
       restricted_endpoints_str: "/admin",
     },
   });
