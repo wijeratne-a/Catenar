@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aegis-verifier
+spec:
+  replicas: {{ .Values.verifier.replicas }}
+  selector:
+    matchLabels:
+      app: aegis-verifier
+  template:
+    metadata:
+      labels:
+        app: aegis-verifier
+    spec:
+      containers:
+        - name: verifier
+          image: {{ .Values.verifier.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: {{ .Values.verifier.port }}
+          env:
+            - name: KEY_PROVIDER
+              value: {{ .Values.verifier.keyProvider | quote }}
+            - name: POLICY_ENGINE
+              value: {{ .Values.policy.engine | quote }}
+            - name: POLICY_DIR
+              value: {{ .Values.policy.directory | quote }}
+            - name: AEGIS_CLOUD_URL
+              value: {{ .Values.verifier.aegisCloudUrl | quote }}
+            - name: AEGIS_LOG_FORMAT
+              value: "json"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otel.endpoint | quote }}
+          volumeMounts:
+            - name: policy-config
+              mountPath: /etc/aegis/policies
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.verifier.port }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.verifier.port }}
+          resources:
+            {{- toYaml .Values.verifier.resources | nindent 12 }}
+      volumes:
+        - name: policy-config
+          configMap:
+            name: aegis-policy-config

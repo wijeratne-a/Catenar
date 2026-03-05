@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aegis-proxy
+spec:
+  replicas: {{ .Values.proxy.replicas }}
+  selector:
+    matchLabels:
+      app: aegis-proxy
+  template:
+    metadata:
+      labels:
+        app: aegis-proxy
+    spec:
+      containers:
+        - name: proxy
+          image: {{ .Values.proxy.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: {{ .Values.proxy.port }}
+          env:
+            - name: ENFORCE_MODE
+              value: {{ .Values.proxy.enforceMode | quote }}
+            - name: POLICY_PATH
+              value: /etc/aegis/policy.json
+            - name: VERIFIER_URL
+              value: http://aegis-verifier:{{ .Values.verifier.port }}
+            - name: AEGIS_LOG_FORMAT
+              value: "json"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otel.endpoint | quote }}
+          volumeMounts:
+            - name: policy-json
+              mountPath: /etc/aegis
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.proxy.port }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.proxy.port }}
+          resources:
+            {{- toYaml .Values.proxy.resources | nindent 12 }}
+      volumes:
+        - name: policy-json
+          configMap:
+            name: aegis-policy-config
+            items:
+              - key: policy.json
+                path: policy.json

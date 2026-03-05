@@ -8,7 +8,8 @@ import { usePolicyStore } from "@/lib/policy-store";
 import { toast } from "sonner";
 
 const POLICY_PLACEHOLDER = "YOUR_POLICY_COMMITMENT";
-const API_BASE = process.env.NEXT_PUBLIC_VERIFIER_URL ?? "http://127.0.0.1:3000";
+const PROXY_BASE = process.env.NEXT_PUBLIC_PROXY_URL ?? "http://127.0.0.1:8080";
+const VERIFIER_BASE = process.env.NEXT_PUBLIC_VERIFIER_URL ?? "http://127.0.0.1:3000";
 
 function CopyButton({ text }: { text: string }) {
   async function handleCopy() {
@@ -22,54 +23,44 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-const pythonSnippet = (policyHash: string) => `from aegis_sdk import Aegis, AegisClient
+const pythonSnippet = (policyHash: string) => `from aegis_sdk import Aegis
 
-# Initialize with your policy commitment from the Policy Builder
-client = AegisClient(base_url="${API_BASE}")
+# Force all outbound traffic through local Aegis Proxy
+import os
+os.environ["HTTP_PROXY"] = "${PROXY_BASE}"
+os.environ["HTTPS_PROXY"] = "${PROXY_BASE}"
 
-policy = {
-    "public_values": {
-        "max_spend": 1000,
-        "restricted_endpoints": ["/admin"]
-    }
-}
-commitment = client.register_policy(policy)
-print(f"Policy commitment: {commitment}")
+aegis = Aegis(
+    base_url="${VERIFIER_BASE}",
+    session_id="session-123",
+    user_id="alice",
+    iam_role="customer-support"
+)
 
-# Verify a trace
-payload = {
-    "agent_metadata": {"domain": "defi", "version": "1.0"},
-    "policy_commitment": "${policyHash}",
-    "execution_trace": [
-        {"action": "api_call", "target": "https://dex.api/swap", "amount": 500}
-    ],
-    "public_values": {
-        "max_spend": 1000,
-        "restricted_endpoints": ["/admin"]
-    }
-}
-result = client.verify(payload)
-print(result.response_body)
+# Register policy then run your instrumented function calls
+policy = {"public_values": {"max_spend": 1000, "restricted_endpoints": ["/admin"]}}
+aegis.init(policy=policy, domain="defi", public_values=policy["public_values"])
+
+@aegis.trace
+def execute_swap(amount: float):
+    return {"ok": True, "amount": amount}
+
+execute_swap(500)
+aegis.close()
 `;
 
-const curlSnippet = (policyHash: string) => `# Register a policy
-curl -X POST ${API_BASE}/v1/register \\
+const curlSnippet = (_policyHash: string) => `# Sidecar receipt ingest endpoint (Control Plane)
+curl -X POST http://localhost:3001/api/receipts \\
   -H "Content-Type: application/json" \\
-  -d '{"public_values":{"max_spend":1000,"restricted_endpoints":["/admin"]}}'
-
-# Verify a trace (use your policy_commitment from above)
-curl -X POST ${API_BASE}/v1/verify \\
-  -H "Content-Type: application/json" \\
+  -H "X-Aegis-Ingest-Token: <optional-ingest-token>" \\
   -d '{
-    "agent_metadata": {"domain": "defi", "version": "1.0"},
-    "policy_commitment": "${policyHash}",
-    "execution_trace": [
-      {"action": "api_call", "target": "https://dex.api/swap", "amount": 500}
-    ],
-    "public_values": {
-      "max_spend": 1000,
-      "restricted_endpoints": ["/admin"]
-    }
+    "receipt_id":"5e195947-90a9-4f9a-a4d0-726f6147f5ec",
+    "policy_commitment":"${POLICY_PLACEHOLDER}",
+    "trace_hash":"0xabc123",
+    "identity_hash":"0xdef456",
+    "timestamp_ns":1738710021000000000,
+    "signature":"<ed25519-signature-hex>",
+    "public_key":"<ed25519-public-key-hex>"
   }'
 `;
 

@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { registerPolicySchema } from "@/lib/schemas";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { blake3Commitment, publishCommitment } from "@/lib/anchor";
 
 const MAX_PAYLOAD_BYTES = 1024 * 1024; // 1MB
+const policies = new Map<string, unknown>();
 
 function getRateLimitKey(request: NextRequest, session: { username: string } | null): string {
   if (session?.username) return `register:${session.username}`;
@@ -50,29 +52,23 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const baseUrl = process.env.VERIFIER_API_URL ?? "http://127.0.0.1:3000";
-  const url = `${baseUrl.replace(/\/$/, "")}/v1/register`;
-
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(parsed.data),
+    const commitment = await blake3Commitment(parsed.data);
+    const anchor = await publishCommitment(commitment, {
+      username: session.username,
+      source: "dashboard-policy-builder",
     });
-    const data = await res.json();
 
-    if (!res.ok) {
-      return NextResponse.json(
-        data ?? { error: "Verifier error" },
-        { status: res.status }
-      );
-    }
-
-    return NextResponse.json(data);
+    policies.set(commitment, parsed.data);
+    return NextResponse.json({
+      policy_commitment: commitment,
+      anchor_url: anchor.anchor_url,
+      anchored_at: anchor.anchored_at,
+    });
   } catch (err) {
-    console.error("[api/register] proxy error:", err);
+    console.error("[api/register] failed:", err);
     return NextResponse.json(
-      { error: "Failed to reach verifier" },
+      { error: "Failed to register policy commitment" },
       { status: 502 }
     );
   }

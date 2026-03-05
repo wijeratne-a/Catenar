@@ -23,11 +23,18 @@ export interface VerifyRequest {
   policy_commitment: string;
   execution_trace: TraceEntry[];
   public_values: PublicValues;
+  identity_context?: {
+    session_id?: string;
+    user_id?: string;
+    iam_role?: string;
+  };
 }
 
 export interface PotReceipt {
+  receipt_id: string;
   policy_commitment: string;
   trace_hash: string;
+  identity_hash?: string;
   timestamp_ns: number;
   signature: string;
   public_key: string;
@@ -41,9 +48,12 @@ export interface VerifyResponse {
 
 export interface RegisterResponse {
   policy_commitment: string;
+  anchor_url?: string;
+  anchored_at?: string;
 }
 
 /** Policy payload sent to /v1/register - wraps public_values */
 export interface RegisterPolicyPayload {
   public_values: PublicValues;
+  rego_policy?: string;
 }

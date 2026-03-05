@@ -12,11 +12,13 @@ import { Label } from "@/components/ui/label";
 import { useRegisterPolicy } from "@/lib/api";
 import { usePolicyStore } from "@/lib/policy-store";
 import { toast } from "sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const policyFormSchema = z.object({
   domain: z.enum(["defi", "enterprise"]),
   max_spend: z.union([z.coerce.number().positive(), z.literal("")]).optional(),
   restricted_endpoints: z.array(z.string()),
+  rego_policy: z.string().optional(),
 });
 
 type PolicyForm = z.infer<typeof policyFormSchema>;
@@ -24,6 +26,8 @@ type PolicyForm = z.infer<typeof policyFormSchema>;
 export default function PolicyBuilderPage() {
   const { policyCommitment, setPolicyCommitment } = usePolicyStore();
   const registerMutation = useRegisterPolicy();
+  const anchorUrl = registerMutation.data?.anchor_url;
+  const anchoredAt = registerMutation.data?.anchored_at;
 
   const {
     register,
@@ -37,6 +41,7 @@ export default function PolicyBuilderPage() {
       domain: "defi",
       max_spend: "" as unknown as number | undefined,
       restricted_endpoints: [""],
+      rego_policy: "package aegis\n\ndefault allow = false\ndefault reason = \"policy denied request\"\n",
     },
   });
 
@@ -60,6 +65,7 @@ export default function PolicyBuilderPage() {
             ? data.restricted_endpoints.filter(Boolean)
             : undefined,
       },
+      rego_policy: data.rego_policy?.trim() ? data.rego_policy : undefined,
     };
 
     try {
@@ -108,46 +114,64 @@ export default function PolicyBuilderPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="max_spend">Max Spend (DeFi only)</Label>
-              <Input
-                id="max_spend"
-                type="number"
-                step="0.01"
-                placeholder="1000"
-                {...register("max_spend")}
-              />
-              {errors.max_spend && (
-                <p className="text-sm text-destructive">{errors.max_spend.message}</p>
-              )}
-            </div>
+            <Tabs defaultValue="json" className="space-y-3">
+              <TabsList>
+                <TabsTrigger value="json">JSON Constraints</TabsTrigger>
+                <TabsTrigger value="rego">Rego Policy</TabsTrigger>
+              </TabsList>
+              <TabsContent value="json" className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="max_spend">Max Spend (DeFi only)</Label>
+                  <Input
+                    id="max_spend"
+                    type="number"
+                    step="0.01"
+                    placeholder="1000"
+                    {...register("max_spend")}
+                  />
+                  {errors.max_spend && (
+                    <p className="text-sm text-destructive">{errors.max_spend.message}</p>
+                  )}
+                </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Restricted Endpoints / Tables</Label>
-                <Button type="button" variant="ghost" size="sm" onClick={addEndpoint}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="space-y-2">
-                {restrictedEndpoints.map((_, idx) => (
-                  <div key={idx} className="flex gap-2">
-                    <Input
-                      placeholder={watch("domain") === "defi" ? "/admin" : "salary"}
-                      {...register(`restricted_endpoints.${idx}`)}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeEndpoint(idx)}
-                    >
-                      <Trash2 className="h-4 w-4" />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Restricted Endpoints / Tables</Label>
+                    <Button type="button" variant="ghost" size="sm" onClick={addEndpoint}>
+                      <Plus className="h-4 w-4" />
                     </Button>
                   </div>
-                ))}
-              </div>
-            </div>
+                  <div className="space-y-2">
+                    {restrictedEndpoints.map((_, idx) => (
+                      <div key={idx} className="flex gap-2">
+                        <Input
+                          placeholder={watch("domain") === "defi" ? "/admin" : "salary"}
+                          {...register(`restricted_endpoints.${idx}`)}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeEndpoint(idx)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </TabsContent>
+              <TabsContent value="rego" className="space-y-2">
+                <Label htmlFor="rego_policy">Rego Policy Source (optional)</Label>
+                <textarea
+                  id="rego_policy"
+                  rows={12}
+                  className="w-full rounded-md border border-input bg-background p-3 font-mono text-sm"
+                  placeholder="package aegis"
+                  {...register("rego_policy")}
+                />
+              </TabsContent>
+            </Tabs>
 
             <Button type="submit" disabled={registerMutation.isPending}>
               {registerMutation.isPending ? "Registering..." : "Register Policy"}
@@ -171,6 +195,22 @@ export default function PolicyBuilderPage() {
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
+            {anchorUrl && (
+              <div className="mt-4 space-y-1 text-sm">
+                <p className="text-muted-foreground">Public Anchor</p>
+                <a
+                  href={anchorUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="break-all text-primary underline"
+                >
+                  {anchorUrl}
+                </a>
+                {anchoredAt && (
+                  <p className="text-xs text-muted-foreground">anchored_at: {anchoredAt}</p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

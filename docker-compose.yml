@@ -1,0 +1,36 @@
+services:
+  aegis-verifier:
+    build:
+      context: ./verifier
+    container_name: aegis-verifier
+    environment:
+      KEY_PROVIDER: local
+      POLICY_ENGINE: rego
+      POLICY_DIR: /etc/aegis/policies
+      AEGIS_CLOUD_URL: http://host.docker.internal:3001/api/receipts
+      AEGIS_LOG_FORMAT: json
+    volumes:
+      - ./policies:/etc/aegis/policies:ro
+    ports:
+      - "3000:3000"
+
+  aegis-proxy:
+    build:
+      context: ./proxy
+    container_name: aegis-proxy
+    depends_on:
+      - aegis-verifier
+    environment:
+      ENFORCE_MODE: audit_only
+      POLICY_PATH: /etc/aegis/policy.json
+      VERIFIER_URL: http://aegis-verifier:3000
+      TRACE_WAL_PATH: /var/lib/aegis/proxy-trace.jsonl
+      AEGIS_LOG_FORMAT: json
+    volumes:
+      - ./policy.json:/etc/aegis/policy.json:ro
+      - proxy-data:/var/lib/aegis
+    ports:
+      - "8080:8080"
+
+volumes:
+  proxy-data:

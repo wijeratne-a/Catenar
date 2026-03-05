@@ -29,11 +29,20 @@ export const verifyRequestSchema = z.object({
   policy_commitment: z.string().min(1).max(MAX_STRING),
   execution_trace: z.array(traceEntrySchema).max(MAX_ARRAY),
   public_values: publicValuesSchema,
+  identity_context: z
+    .object({
+      session_id: z.string().max(MAX_STRING).optional(),
+      user_id: z.string().max(MAX_STRING).optional(),
+      iam_role: z.string().max(MAX_STRING).optional(),
+    })
+    .optional(),
 });
 
 export const potReceiptSchema = z.object({
+  receipt_id: z.string(),
   policy_commitment: z.string(),
   trace_hash: z.string(),
+  identity_hash: z.string().optional(),
   timestamp_ns: z.number(),
   signature: z.string(),
   public_key: z.string(),
@@ -47,11 +56,14 @@ export const verifyResponseSchema = z.object({
 
 export const registerResponseSchema = z.object({
   policy_commitment: z.string(),
+  anchor_url: z.string().url().optional(),
+  anchored_at: z.string().optional(),
 });
 
 /** Schema for the policy payload sent to /v1/register */
 export const registerPolicySchema = z.object({
   public_values: publicValuesSchema,
+  rego_policy: z.string().max(20000).optional(),
 });
 
 export type AgentMetadataInput = z.infer<typeof agentMetadataSchema>;
