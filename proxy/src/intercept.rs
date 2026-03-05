@@ -425,6 +425,14 @@ pub async fn handle(
     let upstream = match forward.send().await {
         Ok(res) => res,
         Err(err) => {
+            if err.is_timeout() {
+                return Ok(block_response(
+                    &state.config,
+                    StatusCode::GATEWAY_TIMEOUT,
+                    "upstream timeout",
+                    Some("Aegis: Upstream request timed out. Do not retry."),
+                ));
+            }
             error!("proxy forward failed: {err}");
             if enforce_mode == EnforceMode::AuditOnly {
                 return Ok(response_with(
@@ -444,7 +452,20 @@ pub async fn handle(
     for (name, value) in upstream.headers() {
         resp_builder = resp_builder.header(name, value);
     }
-    let response_body = upstream.bytes().await.context("failed reading upstream body")?;
+    let response_body = match upstream.bytes().await {
+        Ok(b) => b,
+        Err(err) => {
+            if err.is_timeout() {
+                return Ok(block_response(
+                    &state.config,
+                    StatusCode::GATEWAY_TIMEOUT,
+                    "upstream timeout",
+                    Some("Aegis: Upstream request timed out. Do not retry."),
+                ));
+            }
+            return Err(err.into());
+        }
+    };
     let resp = resp_builder
         .body(Full::new(response_body))
         .unwrap_or_else(|_| response_500());
@@ -671,13 +692,27 @@ async fn handle_mitm_request(
         }
     }
 
-    let upstream_res = state
+    let upstream_res = match state
         .client
         .request(method, &target_url)
         .headers(headers)
         .body(body_bytes)
         .send()
-        .await?;
+        .await
+    {
+        Ok(r) => r,
+        Err(err) => {
+            if err.is_timeout() {
+                return Ok(block_response(
+                    &state.config,
+                    StatusCode::GATEWAY_TIMEOUT,
+                    "upstream timeout",
+                    Some("Aegis: Upstream request timed out. Do not retry."),
+                ));
+            }
+            return Err(err.into());
+        }
+    };
 
     let status = upstream_res.status();
     let headers = upstream_res.headers().clone();
@@ -692,8 +727,21 @@ async fn handle_mitm_request(
     let mut body_stream = upstream_res.bytes_stream();
     let mut total: u64 = 0;
     let mut body_buf = bytes::BytesMut::new();
-    while let Some(chunk) = body_stream.next().await {
-        let chunk = chunk?;
+    while let Some(chunk_res) = body_stream.next().await {
+        let chunk = match chunk_res {
+            Ok(c) => c,
+            Err(err) => {
+                if err.is_timeout() {
+                    return Ok(block_response(
+                        &state.config,
+                        StatusCode::GATEWAY_TIMEOUT,
+                        "upstream timeout",
+                        Some("Aegis: Upstream request timed out. Do not retry."),
+                    ));
+                }
+                return Err(err.into());
+            }
+        };
         total += chunk.len() as u64;
         if total > MAX_RESPONSE_BYTES {
             return Ok(block_response(

@@ -57,6 +57,17 @@ async fn main() -> Result<()> {
         .map(|v| v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("1"))
         .unwrap_or(true);
 
+    let upstream_timeout_secs = std::env::var("UPSTREAM_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|&s| s >= 1 && s <= 300)
+        .unwrap_or_else(|| {
+            if std::env::var("UPSTREAM_TIMEOUT_SECS").is_ok() {
+                error!("UPSTREAM_TIMEOUT_SECS invalid (must be 1-300); using 10");
+            }
+            10
+        });
+
     let policy = read_policy(&policy_path).unwrap_or_else(|err| {
         error!("failed to load policy from {}: {}; defaulting empty", policy_path, err);
         PolicyConfig::default()
@@ -100,7 +111,10 @@ async fn main() -> Result<()> {
             semantic_deny,
         }),
         logger: TraceLogger::new(&trace_wal)?,
-        client: reqwest::Client::new(),
+        client: reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(upstream_timeout_secs))
+            .build()
+            .context("failed to build reqwest client")?,
         mitm_server_config,
         payload_engine,
         schema_registry,

@@ -41,3 +41,5 @@ If agents do not set the CA bundle, HTTPS requests through the proxy will fail w
 ## Protocol Scope (V1)
 
 Aegis V1 supports **HTTP/HTTPS only**. CONNECT tunnels carrying non-HTTP protocols (e.g. PostgreSQL wire, Redis, raw TCP) are rejected with a clear error. Database clients that use native wire protocols must not be routed through the Aegis proxy.
+
+Upstream requests (both plain HTTP forward and MITM CONNECT) are bounded by `UPSTREAM_TIMEOUT_SECS` to prevent hung APIs from blocking the proxy.

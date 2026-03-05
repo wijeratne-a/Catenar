@@ -23,3 +23,4 @@ cargo run
 | SEMANTIC_DENY   | true                  | Return 200+semantic body instead of 403 on block |
 | VERIFIER_URL    | http://127.0.0.1:3000 | Verifier for healthcheck      |
 | ENFORCE_MODE    | strict          | strict \| audit_only                 |
+| UPSTREAM_TIMEOUT_SECS | 10 | Timeout in seconds for upstream requests (1–300) |
