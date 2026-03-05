@@ -1,4 +1,8 @@
+use std::cell::Cell;
 use std::{net::{IpAddr, SocketAddr}, str::FromStr, sync::{Arc, RwLock}};
+use std::time::{Duration, Instant};
+
+use dashmap::DashMap;
 
 use rustls::ServerConfig;
 
@@ -17,7 +21,7 @@ use serde_json::Value as JsonValue;
 use std::io::Cursor;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf};
 use tokio_rustls::TlsAcceptor;
-use tracing::{error, info, info_span, warn};
+use tracing::{debug, error, info, info_span, warn};
 use uuid::Uuid;
 
 use crate::telemetry;
@@ -192,6 +196,8 @@ pub struct ProxyConfig {
     pub policy: PolicyConfig,
     /// When true, return 200 with semantic error body instead of 403/4xx. Prevents LLM retry loops.
     pub semantic_deny: bool,
+    pub metrics_enabled: bool,
+    pub policy_debug: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -248,6 +254,26 @@ struct ProxyTraceLogEntrySanitized {
     enforce_mode: String,
     enforcement: String,
     has_identity: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    policy_debug_reason: Option<String>,
+}
+
+struct RequestLatencyGuard {
+    started_at: Instant,
+}
+
+impl RequestLatencyGuard {
+    fn new() -> Self {
+        Self {
+            started_at: Instant::now(),
+        }
+    }
+}
+
+impl Drop for RequestLatencyGuard {
+    fn drop(&mut self) {
+        telemetry::observe_latency_ms(self.started_at.elapsed().as_secs_f64() * 1000.0);
+    }
 }
 
 #[derive(Clone)]
@@ -309,6 +335,7 @@ fn append_trace_entry(
     blocked: bool,
     enforcement: &str,
     has_identity: bool,
+    policy_debug_reason: Option<&str>,
 ) {
     let trace_entry = ProxyTraceLogEntrySanitized {
         timestamp_ns: Utc::now().timestamp_nanos_opt().unwrap_or_default(),
@@ -319,6 +346,11 @@ fn append_trace_entry(
         enforce_mode: state.config.enforce_mode.as_str().to_string(),
         enforcement: enforcement.to_string(),
         has_identity,
+        policy_debug_reason: if state.config.policy_debug {
+            policy_debug_reason.map(|r| r.to_string())
+        } else {
+            None
+        },
     };
     let logger = state.logger.clone();
     tokio::task::spawn_blocking(move || {
@@ -453,15 +485,62 @@ fn classify_violation(reason: &str) -> telemetry::ViolationType {
     }
 }
 
+fn check_rate_limit(state: &ProxyState, remote_addr: &SocketAddr) -> bool {
+    let key = remote_addr.to_string();
+    let now = Instant::now();
+    let exceeded = Cell::new(false);
+    state.rate_limit.entry(key.clone()).and_modify(|(window_start, count)| {
+        if now.duration_since(*window_start) > RATE_LIMIT_WINDOW {
+            *window_start = now;
+            *count = 1;
+        } else {
+            *count = count.saturating_add(1);
+            if *count > RATE_LIMIT_MAX {
+                exceeded.set(true);
+            }
+        }
+    }).or_insert((now, 1));
+    !exceeded.get()
+}
+
 pub async fn handle(
     state: ProxyState,
     mut req: Request<Incoming>,
     remote_addr: SocketAddr,
 ) -> Result<Response<ProxyBody>> {
+    if !check_rate_limit(&state, &remote_addr) {
+        return Ok(block_response(
+            &state.config,
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate limit exceeded",
+            Some("Aegis Security Block: Rate limit exceeded. Do not retry."),
+        ));
+    }
+
     let method = req.method().clone();
 
     if method == Method::GET {
         let path = req.uri().path();
+        if path == "/metrics" {
+            if !state.config.metrics_enabled {
+                return Ok(response_with(
+                    StatusCode::NOT_FOUND,
+                    r#"{"error":"not found"}"#,
+                ));
+            }
+            if state.config.enforce_mode == EnforceMode::Strict && !remote_addr.ip().is_loopback() {
+                return Ok(response_with(
+                    StatusCode::FORBIDDEN,
+                    r#"{"error":"metrics endpoint requires loopback in strict mode"}"#,
+                ));
+            }
+            let body = telemetry::render_prometheus_text().unwrap_or_default();
+            return Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header("content-type", "text/plain; version=0.0.4; charset=utf-8")
+                .body(Full::new(bytes::Bytes::from(body)))
+                .unwrap_or_else(|_| response_500()));
+        }
         if path == "/healthz" {
             let verifier_health = format!(
                 "{}/healthz",
@@ -535,7 +614,9 @@ pub async fn handle(
             true,
             "blocked",
             false,
+            Some("forwarding to internal or private targets is forbidden"),
         );
+        telemetry::increment_blocked(authority, telemetry::ViolationType::PolicyViolation);
         emit_webhook_event(
             &state,
             WebhookEvent::new(
@@ -564,7 +645,9 @@ pub async fn handle(
             true,
             "blocked",
             false,
+            Some("forwarding to internal or private targets is forbidden (DNS SSRF)"),
         );
+        telemetry::increment_blocked(authority, telemetry::ViolationType::PolicyViolation);
         emit_webhook_event(
             &state,
             WebhookEvent::new(
@@ -584,6 +667,8 @@ pub async fn handle(
     }
     let target = target_uri.to_string();
     let target_host = target_uri.host().unwrap_or_default().to_string();
+    let _latency_guard = RequestLatencyGuard::new();
+    telemetry::increment_request(&target_host);
     let blocked = should_block(&target, &state.config.policy);
     let enforce_mode = state.config.enforce_mode;
     let request_id = generate_request_id();
@@ -619,10 +704,16 @@ pub async fn handle(
         blocked,
         enforcement,
         has_identity,
+        if blocked {
+            Some("blocked by policy target rule")
+        } else {
+            None
+        },
     );
 
     if blocked && enforce_mode == EnforceMode::Strict {
         warn!("strict mode blocked request target={target}");
+        telemetry::increment_blocked(&target_host, telemetry::ViolationType::PolicyViolation);
         emit_webhook_event(
             &state,
             WebhookEvent::new(
@@ -642,6 +733,7 @@ pub async fn handle(
     }
     if blocked {
         warn!("audit_only policy violation target={target}");
+        telemetry::increment_blocked(&target_host, telemetry::ViolationType::PolicyViolation);
         emit_webhook_event(
             &state,
             WebhookEvent::new(
@@ -655,12 +747,23 @@ pub async fn handle(
     }
 
     let forward_headers = req.headers().clone();
-    let body_bytes = req
-        .into_body()
-        .collect()
-        .await
-        .context("failed reading request body")?
-        .to_bytes();
+    let (_, body) = req.into_parts();
+    let limited_body = Limited::new(body, MAX_BODY_BYTES);
+    let collected = match limited_body.collect().await {
+        Ok(c) => c,
+        Err(e) => {
+            if e.downcast_ref::<LengthLimitError>().is_some() {
+                return Ok(block_response(
+                    &state.config,
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "request body exceeds 5MB limit",
+                    Some("Aegis Security Block: Payload too large. Reduce request body size. Do not retry."),
+                ));
+            }
+            return Err(e.into());
+        }
+    };
+    let body_bytes = collected.to_bytes();
 
     let mut forward = state.client.request(method.clone(), target_uri.to_string());
     for (name, value) in &forward_headers {
@@ -675,6 +778,7 @@ pub async fn handle(
         Ok(res) => res,
         Err(err) => {
             if err.is_timeout() {
+                telemetry::increment_timeout(&target_host);
                 emit_webhook_event(
                     &state,
                     WebhookEvent::new(
@@ -715,6 +819,7 @@ pub async fn handle(
         Ok(b) => b,
         Err(err) => {
             if err.is_timeout() {
+                telemetry::increment_timeout(&target_host);
                 emit_webhook_event(
                     &state,
                     WebhookEvent::new(
@@ -839,7 +944,9 @@ async fn handle_connect(
             true,
             "blocked",
             false,
+            Some("CONNECT to internal targets forbidden"),
         );
+        telemetry::increment_blocked(&authority, telemetry::ViolationType::PolicyViolation);
         emit_webhook_event(
             &state,
             WebhookEvent::new(
@@ -869,7 +976,9 @@ async fn handle_connect(
             true,
             "blocked",
             false,
+            Some("CONNECT to internal targets forbidden (DNS SSRF)"),
         );
+        telemetry::increment_blocked(host, telemetry::ViolationType::PolicyViolation);
         emit_webhook_event(
             &state,
             WebhookEvent::new(
@@ -970,6 +1079,7 @@ async fn handle_mitm_request(
     let (parts, body) = req.into_parts();
     let path_q = parts.uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
     let host = authority.split(':').next().unwrap_or(&authority).to_string();
+    let _latency_guard = RequestLatencyGuard::new();
 
     telemetry::increment_request(&host);
 
@@ -987,7 +1097,9 @@ async fn handle_mitm_request(
                     true,
                     "blocked",
                     false,
+                    Some("request body exceeds 5MB limit"),
                 );
+                telemetry::increment_blocked(&host, telemetry::ViolationType::PolicyViolation);
                 return Ok(block_response(
                     &state.config,
                     StatusCode::PAYLOAD_TOO_LARGE,
@@ -1038,7 +1150,20 @@ async fn handle_mitm_request(
                     true,
                     "blocked",
                     has_identity,
+                    Some(&truncated),
                 );
+                if state.config.policy_debug {
+                    debug!(
+                        event = "policy_checkpoint",
+                        checkpoint = "schema_validation",
+                        outcome = "blocked",
+                        request_id = %request_id,
+                        method = %method,
+                        host = %host,
+                        path = %path_q,
+                        reason = %truncated
+                    );
+                }
                 emit_webhook_event(
                     &state,
                     WebhookEvent::new(
@@ -1051,7 +1176,40 @@ async fn handle_mitm_request(
                 );
                 return Ok(block_response(&state.config, StatusCode::BAD_REQUEST, &truncated, Some(&msg)));
             }
+            if state.config.policy_debug {
+                debug!(
+                    event = "policy_checkpoint",
+                    checkpoint = "schema_validation",
+                    outcome = "allowed",
+                    request_id = %request_id,
+                    method = %method,
+                    host = %host,
+                    path = %path_q
+                );
+            }
+        } else if state.config.policy_debug {
+            debug!(
+                event = "policy_checkpoint",
+                checkpoint = "schema_validation",
+                outcome = "skipped",
+                request_id = %request_id,
+                method = %method,
+                host = %host,
+                path = %path_q,
+                reason = "non_json_or_empty_body"
+            );
         }
+    } else if state.config.policy_debug {
+        debug!(
+            event = "policy_checkpoint",
+            checkpoint = "schema_validation",
+            outcome = "skipped",
+            request_id = %request_id,
+            method = %method,
+            host = %host,
+            path = %path_q,
+            reason = "schema_registry_unavailable"
+        );
     }
 
     let rego_input = PayloadRegoInput {
@@ -1064,8 +1222,10 @@ async fn handle_mitm_request(
     };
 
     if let Some(ref engine) = state.payload_engine {
+        let policy_eval_started = Instant::now();
         match engine.evaluate(&rego_input) {
             Ok(decision) if !decision.allow => {
+                telemetry::observe_policy_eval_ms(policy_eval_started.elapsed().as_secs_f64() * 1000.0);
                 let reason = decision.reason.unwrap_or_else(|| "policy violation".to_string());
                 let violation_source = decision.violation_type.as_deref().unwrap_or(&reason);
                 telemetry::increment_blocked(&host, classify_violation(violation_source));
@@ -1078,7 +1238,20 @@ async fn handle_mitm_request(
                     true,
                     "blocked",
                     has_identity,
+                    Some(&reason),
                 );
+                if state.config.policy_debug {
+                    debug!(
+                        event = "policy_checkpoint",
+                        checkpoint = "payload_policy_decision",
+                        outcome = "blocked",
+                        request_id = %request_id,
+                        method = %method,
+                        host = %host,
+                        path = %path_q,
+                        reason = %reason
+                    );
+                }
                 emit_webhook_event(
                     &state,
                     WebhookEvent::new(
@@ -1097,6 +1270,19 @@ async fn handle_mitm_request(
                 ));
             }
             Err(e) => {
+                telemetry::observe_policy_eval_ms(policy_eval_started.elapsed().as_secs_f64() * 1000.0);
+                if state.config.policy_debug {
+                    debug!(
+                        event = "policy_checkpoint",
+                        checkpoint = "payload_policy_decision",
+                        outcome = "error",
+                        request_id = %request_id,
+                        method = %method,
+                        host = %host,
+                        path = %path_q,
+                        reason = %e
+                    );
+                }
                 tracing::warn!("payload policy evaluation error: {e}");
                 return Ok(Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -1106,8 +1292,32 @@ async fn handle_mitm_request(
                     )))
                     .unwrap_or_else(|_| response_500()));
             }
-            _ => {}
+            _ => {
+                telemetry::observe_policy_eval_ms(policy_eval_started.elapsed().as_secs_f64() * 1000.0);
+                if state.config.policy_debug {
+                    debug!(
+                        event = "policy_checkpoint",
+                        checkpoint = "payload_policy_decision",
+                        outcome = "allowed",
+                        request_id = %request_id,
+                        method = %method,
+                        host = %host,
+                        path = %path_q
+                    );
+                }
+            }
         }
+    } else if state.config.policy_debug {
+        debug!(
+            event = "policy_checkpoint",
+            checkpoint = "payload_policy_decision",
+            outcome = "skipped",
+            request_id = %request_id,
+            method = %method,
+            host = %host,
+            path = %path_q,
+            reason = "payload_engine_unavailable"
+        );
     }
 
     let target_url = format!("https://{authority}{path_q}");
@@ -1153,7 +1363,9 @@ async fn handle_mitm_request(
             true,
             "blocked",
             has_identity,
+            Some("forwarding to internal or private targets is forbidden (DNS SSRF)"),
         );
+        telemetry::increment_blocked(&host, telemetry::ViolationType::PolicyViolation);
         emit_webhook_event(
             &state,
             WebhookEvent::new(
@@ -1192,6 +1404,7 @@ async fn handle_mitm_request(
                     false,
                     "upstream_timeout",
                     has_identity,
+                    Some("upstream timeout"),
                 );
                 emit_webhook_event(
                     &state,
@@ -1232,6 +1445,7 @@ async fn handle_mitm_request(
             Ok(c) => c,
             Err(err) => {
                 if err.is_timeout() {
+                    telemetry::increment_timeout(&host);
                     append_trace_entry(
                         &state,
                         request_id.clone(),
@@ -1239,7 +1453,8 @@ async fn handle_mitm_request(
                         &target_url,
                         false,
                         "upstream_timeout",
-                    has_identity,
+                        has_identity,
+                        Some("upstream timeout"),
                     );
                     emit_webhook_event(
                         &state,
@@ -1283,8 +1498,10 @@ async fn handle_mitm_request(
             body: std::str::from_utf8(&body_bytes).ok().map(|v| v.to_string()),
             headers: headers_to_map(&headers),
         };
+        let policy_eval_started = Instant::now();
         match engine.evaluate(&response_input) {
             Ok(decision) if !decision.allow => {
+                telemetry::observe_policy_eval_ms(policy_eval_started.elapsed().as_secs_f64() * 1000.0);
                 let reason = decision
                     .reason
                     .unwrap_or_else(|| "response policy violation".to_string());
@@ -1301,7 +1518,20 @@ async fn handle_mitm_request(
                     true,
                     "blocked",
                     has_identity,
+                    Some(&reason),
                 );
+                if state.config.policy_debug {
+                    debug!(
+                        event = "policy_checkpoint",
+                        checkpoint = "response_policy_decision",
+                        outcome = "blocked",
+                        request_id = %request_id,
+                        method = %method,
+                        host = %host,
+                        path = %path_q,
+                        reason = %reason
+                    );
+                }
                 emit_webhook_event(
                     &state,
                     WebhookEvent::new(
@@ -1320,6 +1550,19 @@ async fn handle_mitm_request(
                 return Ok(block_response(&state.config, deny_status, &reason, None));
             }
             Err(e) => {
+                telemetry::observe_policy_eval_ms(policy_eval_started.elapsed().as_secs_f64() * 1000.0);
+                if state.config.policy_debug {
+                    debug!(
+                        event = "policy_checkpoint",
+                        checkpoint = "response_policy_decision",
+                        outcome = "error",
+                        request_id = %request_id,
+                        method = %method,
+                        host = %host,
+                        path = %path_q,
+                        reason = %e
+                    );
+                }
                 tracing::warn!("response policy evaluation error: {e}");
                 return Ok(Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -1329,8 +1572,32 @@ async fn handle_mitm_request(
                     )))
                     .unwrap_or_else(|_| response_500()));
             }
-            _ => {}
+            _ => {
+                telemetry::observe_policy_eval_ms(policy_eval_started.elapsed().as_secs_f64() * 1000.0);
+                if state.config.policy_debug {
+                    debug!(
+                        event = "policy_checkpoint",
+                        checkpoint = "response_policy_decision",
+                        outcome = "allowed",
+                        request_id = %request_id,
+                        method = %method,
+                        host = %host,
+                        path = %path_q
+                    );
+                }
+            }
         }
+    } else if state.config.policy_debug {
+        debug!(
+            event = "policy_checkpoint",
+            checkpoint = "response_policy_decision",
+            outcome = "skipped",
+            request_id = %request_id,
+            method = %method,
+            host = %host,
+            path = %path_q,
+            reason = "response_engine_unavailable"
+        );
     }
 
     let mut resp_builder = Response::builder().status(status);
@@ -1348,6 +1615,7 @@ async fn handle_mitm_request(
         false,
         "allowed",
         has_identity,
+        None,
     );
     Ok(resp)
 }

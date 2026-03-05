@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileCode, FileSpreadsheet, Shield, Terminal } from "lucide-react";
+import { FileCode, FileSpreadsheet, Shield, Terminal, AlertTriangle, Users, Plug } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/dashboard/policy", label: "Policy Builder", icon: Shield },
-  { href: "/dashboard/verify", label: "Verification Playground", icon: FileCode },
-  { href: "/dashboard/compliance", label: "Compliance Exports", icon: FileSpreadsheet },
-  { href: "/dashboard/sdk", label: "SDK Sandbox", icon: Terminal },
+  { href: "/dashboard/receipts", label: "Receipts", icon: FileCode },
+  { href: "/dashboard/alerts", label: "Alerts", icon: AlertTriangle },
+  { href: "/dashboard/agents", label: "Agents", icon: Users },
+  { href: "/dashboard/compliance", label: "Compliance", icon: FileSpreadsheet },
+  { href: "/dashboard/integrations", label: "Integrations", icon: Plug },
 ];
 
 export function DashboardSidebar() {

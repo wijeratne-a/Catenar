@@ -340,7 +340,7 @@ fn decode_vault_signature(signature: &str) -> Result<Vec<u8>> {
 }
 
 pub async fn build_key_provider() -> Result<Arc<dyn KeyProvider>> {
-    let provider = std::env::var("KEY_PROVIDER").unwrap_or_else(|_| "local".to_string());
+    let provider = std::env::var("KEY_PROVIDER").unwrap_or_else(|_| "env".to_string());
     match provider.as_str() {
         "local" => {
             let allow = std::env::var("AEGIS_DEV_ALLOW_EPHEMERAL_KEY")

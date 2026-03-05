@@ -12,12 +12,50 @@ type AuthResult =
   | { ok: false; status: 401 }
   | { ok: false; status: 503 };
 
-function isAuthorizedSidecar(request: NextRequest): AuthResult {
+/** Parse optional per-org tokens: SIDECAR_INGEST_TOKENS='{"org1":"token1","org2":"token2"}' */
+function getPerOrgTokens(): Record<string, string> | null {
+  const raw = process.env.SIDECAR_INGEST_TOKENS;
+  if (!raw || raw.length < 10) return null;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const result: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === "string" && v.length >= 32) result[k] = v;
+    }
+    return Object.keys(result).length > 0 ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+function isAuthorizedSidecar(request: NextRequest): AuthResult & { orgId?: string } {
+  const token = request.headers.get("x-aegis-ingest-token") ?? "";
+  const orgFromHeader =
+    request.headers.get("x-aegis-org-id") ??
+    request.headers.get("x-aegis-tenant-id") ??
+    null;
+
+  const perOrg = getPerOrgTokens();
+  if (perOrg && orgFromHeader) {
+    const expected = perOrg[orgFromHeader.trim()];
+    if (expected) {
+      const a = Buffer.from(expected, "utf8");
+      const b = Buffer.from(token, "utf8");
+      if (a.length === b.length) {
+        try {
+          if (timingSafeEqual(a, b)) return { ok: true, orgId: orgFromHeader.trim() };
+        } catch {
+          /* fall through */
+        }
+      }
+      return { ok: false, status: 401 };
+    }
+  }
+
   const expected = process.env.SIDECAR_INGEST_TOKEN;
   if (!expected || expected.length < 32) {
     return { ok: false, status: 503 };
   }
-  const token = request.headers.get("x-aegis-ingest-token") ?? "";
   const a = Buffer.from(expected, "utf8");
   const b = Buffer.from(token, "utf8");
   if (a.length !== b.length) {
@@ -78,7 +116,8 @@ export async function POST(request: NextRequest) {
   }
 
   const token = request.headers.get("x-aegis-ingest-token");
-  const orgId = getOrgIdFromIngestHeaders(request, token);
+  const orgId =
+    auth.orgId ?? getOrgIdFromIngestHeaders(request, token);
   const rateKey = getReceiptRateLimitKey(request, orgId);
   const { allowed } = checkReceiptIngestLimit(rateKey);
   if (!allowed) {

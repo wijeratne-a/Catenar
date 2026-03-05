@@ -3,6 +3,7 @@ import { registerPolicySchema } from "@/lib/schemas";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit, getTrustedIdentifier } from "@/lib/rate-limit";
 import { blake3Commitment, publishCommitment } from "@/lib/anchor";
+import { pushPolicyHistory } from "@/lib/policy-history";
 import { ensureStartupValidation } from "@/lib/startup";
 
 const MAX_PAYLOAD_BYTES = 1024 * 1024; // 1MB
@@ -115,6 +116,11 @@ export async function POST(request: NextRequest) {
     });
 
     policies.set(key, parsed.data);
+    pushPolicyHistory({
+      policy_commitment: commitment,
+      policy_storage_key: key,
+      org_id: orgId,
+    });
     return NextResponse.json({
       policy_commitment: commitment,
       policy_storage_key: key,

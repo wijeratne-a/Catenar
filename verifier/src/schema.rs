@@ -20,6 +20,24 @@ pub struct RegisterResponse {
     pub policy_commitment: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_token: Option<String>,
+    pub task_token_required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentRegistration {
+    pub agent_id: String,
+    pub team: String,
+    pub model: String,
+    pub env: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentRegistrationResponse {
+    pub agent_id: String,
+    pub registered_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,6 +171,8 @@ pub struct PotReceipt {
     /// BLAKE3(trace_hash || identity_hash || timestamp_ns) - single binding hash for audit verification.
     pub combined_hash: String,
     pub timestamp_ns: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
     pub signature: String,
     pub public_key: String,
 }

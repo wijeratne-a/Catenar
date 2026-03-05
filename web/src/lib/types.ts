@@ -59,3 +59,24 @@ export interface RegisterPolicyPayload {
   public_values: PublicValues;
   rego_policy?: string;
 }
+
+/** Agent registration from verifier GET /v1/agents */
+export interface Agent {
+  agent_id: string;
+  team: string;
+  model: string;
+  env: string;
+  version: string;
+}
+
+/** Policy violation alert from verifier webhook */
+export interface Alert {
+  id: string;
+  event: string;
+  policy_commitment: string;
+  domain: string;
+  reason: string;
+  timestamp_ns: number;
+  received_at: string;
+  severity?: string;
+}

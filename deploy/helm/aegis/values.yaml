@@ -194,6 +194,21 @@ secrets:
     name: aegis-signing-key
     value: ""
 
+# Integrations: SIEM, Datadog, Splunk, etc.
+integrations:
+  datadog:
+    enabled: false
+    apiKey: ""
+    site: datadoghq.com
+  splunk:
+    enabled: false
+    hecEndpoint: ""
+    hecToken: ""
+  webhook:
+    enabled: false
+    url: ""
+    secretName: ""
+
 redis:
   enabled: false
   url: ""

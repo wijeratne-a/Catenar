@@ -37,7 +37,8 @@ use crate::engine::{
 use crate::keys::{build_key_provider, KeyProvider};
 use crate::policy::{build_policy_engine, PolicyEngine};
 use crate::schema::{AgentTaskToken, RegisterResponse, VerifyRequest, VerifyResponse};
-use crate::store::{build_policy_store, PolicyStore};
+use crate::schema::{AgentRegistration, AgentRegistrationResponse};
+use crate::store::{build_agent_store, build_policy_store, AgentStore, PolicyStore};
 
 const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
 const RATE_LIMIT_MAX: u32 = 60;
@@ -48,6 +49,7 @@ const DEFAULT_TASK_ID: &str = "unknown-task";
 #[derive(Clone)]
 struct AppState {
     policy_store: Arc<dyn PolicyStore>,
+    agent_store: Arc<dyn AgentStore>,
     key_provider: Arc<dyn KeyProvider>,
     policy_engine: Arc<dyn PolicyEngine>,
     http_client: reqwest::Client,
@@ -243,6 +245,7 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState {
         policy_store: build_policy_store(),
+        agent_store: build_agent_store(),
         key_provider: build_key_provider().await?,
         policy_engine: Arc::from(build_policy_engine()),
         http_client: reqwest::Client::builder()
@@ -260,6 +263,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/register", post(register_handler))
         .route("/v1/verify", post(verify_handler))
         .route("/v1/receipt", post(receipt_ingest_handler))
+        .route("/v1/agent/register", post(agent_register_handler))
+        .route("/v1/agents", get(list_agents_handler))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_middleware,
@@ -327,15 +332,21 @@ async fn register_handler(
                 .map_err(|e| AppError::internal(format!("failed to issue task token: {e}")))
         })
         .transpose()?;
+    let task_token_required = std::env::var("TASK_TOKEN_SECRET")
+        .ok()
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
 
     Ok(Json(RegisterResponse {
         policy_commitment: commitment,
         task_token,
+        task_token_required,
     }))
 }
 
 async fn verify_handler(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(request): Json<VerifyRequest>,
 ) -> AppResult<Json<VerifyResponse>> {
     request
@@ -344,9 +355,16 @@ async fn verify_handler(
             status: StatusCode::BAD_REQUEST,
             message: e,
         })?;
+    let agent_id = headers
+        .get("x-aegis-agent-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
     let response = verify_trace(
         &request,
+        agent_id,
         state.policy_store.as_ref(),
+        state.agent_store.as_ref(),
         state.key_provider.as_ref(),
         state.policy_engine.as_ref(),
     )
@@ -359,6 +377,44 @@ async fn verify_handler(
         eprintln!("[aegis-api] failed to send policy violation webhook: {err}");
     }
     Ok(Json(response))
+}
+
+async fn agent_register_handler(
+    State(state): State<AppState>,
+    Json(registration): Json<AgentRegistration>,
+) -> AppResult<Json<AgentRegistrationResponse>> {
+    let registered_at = state
+        .agent_store
+        .upsert_agent(&registration)
+        .await
+        .map_err(|e| AppError::internal(format!("failed to register agent: {e}")))?;
+    Ok(Json(AgentRegistrationResponse {
+        agent_id: registration.agent_id,
+        registered_at,
+    }))
+}
+
+async fn list_agents_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<Vec<AgentRegistration>>> {
+    let role = headers
+        .get("x-aegis-role")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .unwrap_or("");
+    if role != "admin" {
+        return Err(AppError {
+            status: StatusCode::FORBIDDEN,
+            message: "admin role required".to_string(),
+        });
+    }
+    let agents = state
+        .agent_store
+        .list_agents()
+        .await
+        .map_err(|e| AppError::internal(format!("failed to list agents: {e}")))?;
+    Ok(Json(agents))
 }
 
 async fn receipt_ingest_handler(Json(_receipt): Json<Value>) -> impl IntoResponse {

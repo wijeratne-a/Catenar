@@ -57,8 +57,20 @@ export const verifyResponseSchema = z.object({
 
 export const registerResponseSchema = z.object({
   policy_commitment: z.string(),
+  policy_storage_key: z.string().optional(),
+  task_token: z.string().optional(),
+  task_token_required: z.boolean().optional(),
   anchor_url: z.string().url().optional(),
   anchored_at: z.string().optional(),
+});
+
+/** Schema for policy violation webhook payload (verifier → control plane) */
+export const policyViolationWebhookSchema = z.object({
+  event: z.string().min(1).max(256),
+  policy_commitment: z.string().min(1).max(MAX_STRING),
+  domain: z.string().min(1).max(MAX_STRING),
+  reason: z.string().max(MAX_STRING),
+  timestamp_ns: z.number(),
 });
 
 /** Schema for the policy payload sent to /v1/register */

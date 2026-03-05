@@ -5,16 +5,31 @@ Security defaults in this chart are production-leaning:
   - verifier KEY_PROVIDER defaults to "env"
   - pod/container securityContext and network policies are enabled by default
 
-Required next steps:
-  1. Provide verifier signing key material:
-     kubectl create secret generic {{ .Values.verifier.signingKeySecretName }} \
-       --from-literal=AEGIS_SIGNING_KEY_HEX=<64-byte-hex>
-  2. Configure SIEM exporter env values if you use the bundled OTel config:
-     - SIEM_OTLP_HTTP_ENDPOINT
-     - SIEM_OTLP_HTTP_TOKEN
-     - SPLUNK_HEC_ENDPOINT
-     - SPLUNK_HEC_TOKEN
-     - LOKI_ENDPOINT
+=== Day 1 Playbook ===
 
-Optional:
-  - Enable proxy WAL forwarding sidecar by setting proxy.fluentBit.enabled=true
+1. Create signing key secret (REQUIRED):
+   kubectl create secret generic {{ .Values.verifier.signingKeySecretName }} \
+     --from-literal=AEGIS_SIGNING_KEY_HEX=<64-byte-hex>
+
+2. Verify proxy and verifier pods are running:
+   kubectl get pods -l app=aegis-proxy
+   kubectl get pods -l app=aegis-verifier
+
+3. Configure SIEM (optional):
+   - Set otelCollector.env.siemOtlpHttpEndpoint for Datadog/OTLP
+   - Set otelCollector.env.splunkHecEndpoint for Splunk HEC
+   - Set otelCollector.env.splunkHecToken
+
+4. Enable mTLS (production):
+   - verifier.tls.enabled: true
+   - Create Secret with verifier TLS certs and verifier.tls.secretName
+   - Create Secret with proxy client cert and verifier.tls.clientCertSecretName
+
+5. Enable WAL forwarding (optional):
+   - proxy.fluentBit.enabled: true
+
+6. Test health:
+   kubectl exec -it deployment/aegis-proxy -- wget -qO- http://localhost:8080/healthz || true
+   kubectl exec -it deployment/aegis-verifier -- wget -qO- http://localhost:3000/healthz || true
+
+Runbooks: docs/runbooks/

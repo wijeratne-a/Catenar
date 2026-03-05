@@ -4,7 +4,9 @@ services:
       context: ./verifier
     container_name: aegis-verifier
     environment:
-      KEY_PROVIDER: env
+      # Use env + AEGIS_SIGNING_KEY_HEX for production; local + AEGIS_DEV_ALLOW_EPHEMERAL_KEY for dev
+      KEY_PROVIDER: ${KEY_PROVIDER:-env}
+      AEGIS_DEV_ALLOW_EPHEMERAL_KEY: ${AEGIS_DEV_ALLOW_EPHEMERAL_KEY:-0}
       POLICY_ENGINE: rego
       POLICY_DIR: /etc/aegis/policies
       AEGIS_CLOUD_URL: http://host.docker.internal:3001/api/receipts
@@ -25,7 +27,8 @@ services:
     environment:
       ENFORCE_MODE: strict
       POLICY_PATH: /etc/aegis/policy.json
-      VERIFIER_URL: http://aegis-verifier:3000
+      # Use https:// when verifier TLS is enabled (mount VERIFIER_TLS_CA_PATH, VERIFIER_TLS_CERT_PATH, VERIFIER_TLS_KEY_PATH)
+      VERIFIER_URL: ${VERIFIER_URL:-http://aegis-verifier:3000}
       TRACE_WAL_PATH: /var/lib/aegis/proxy-trace.jsonl
       AEGIS_LOG_FORMAT: json
       REDIS_URL: redis://redis:6379
@@ -87,5 +90,20 @@ services:
     depends_on:
       - prometheus
 
+  splunk:
+    image: splunk/splunk:latest
+    profiles:
+      - observability
+    environment:
+      - SPLUNK_START_ARGS=--accept-license
+      - SPLUNK_PASSWORD=${SPLUNK_PASSWORD:-changeme}
+      - SPLUNK_HEC_TOKEN=${SPLUNK_HEC_TOKEN:-aegis-hec-token}
+    ports:
+      - "8000:8000"
+      - "8088:8088"
+    volumes:
+      - splunk-data:/opt/splunk/var
+
 volumes:
   proxy-data:
+  splunk-data:

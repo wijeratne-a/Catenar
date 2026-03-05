@@ -14,7 +14,7 @@ use crate::{
     keys::KeyProvider,
     policy::{identity_hash, PolicyEngine},
     schema::{AgentTaskToken, PotReceipt, VerifyRequest, VerifyResponse},
-    store::PolicyStore,
+    store::{AgentStore, PolicyStore},
     telemetry,
 };
 
@@ -45,6 +45,7 @@ struct UnsignedReceipt<'a> {
     identity_hash: Option<String>,
     combined_hash: String,
     timestamp_ns: i64,
+    agent_id: Option<&'a str>,
 }
 
 fn sign_task_token_hex(secret: &str, payload_segment: &str) -> Result<String> {
@@ -99,7 +100,9 @@ fn parse_and_validate_task_token(secret: &str, token: &str) -> Result<AgentTaskT
 
 pub async fn verify_trace(
     request: &VerifyRequest,
+    agent_id: Option<&str>,
     policy_store: &dyn PolicyStore,
+    agent_store: &dyn AgentStore,
     key_provider: &dyn KeyProvider,
     policy_engine: &dyn PolicyEngine,
 ) -> Result<VerifyResponse> {
@@ -184,6 +187,11 @@ pub async fn verify_trace(
     let timestamp_ns = Utc::now().timestamp_nanos_opt().unwrap_or_default();
     let receipt_id = Uuid::new_v4().to_string();
     let identity_hash = identity_hash(&request.identity_context)?;
+    if let Some(agent_id) = agent_id {
+        if let Err(err) = agent_store.touch_agent_last_seen(agent_id).await {
+            warn!(agent_id = %agent_id, error = %err, "failed to update agent last_seen");
+        }
+    }
 
     if let Some(ref id_ctx) = request.identity_context {
         verify_span.record(
@@ -210,6 +218,7 @@ pub async fn verify_trace(
         identity_hash: identity_hash.clone(),
         combined_hash: combined_hash.clone(),
         timestamp_ns,
+        agent_id,
     };
     let unsigned_bytes =
         serde_json::to_vec(&unsigned).context("failed to serialize PoT receipt for signing")?;
@@ -222,6 +231,7 @@ pub async fn verify_trace(
         identity_hash,
         combined_hash,
         timestamp_ns,
+        agent_id: agent_id.map(|v| v.to_string()),
         signature: hex_encode(&signature),
         public_key: hex_encode(&key_provider.public_key_bytes()),
     };
@@ -300,27 +310,44 @@ async fn send_policy_violation_webhook(
     payload: &PolicyViolationWebhook<'_>,
 ) -> Result<()> {
     let body = serde_json::to_vec(payload).context("failed to encode webhook payload")?;
-    let mut request = client
-        .post(webhook_url)
-        .header("content-type", "application/json")
-        .body(body.clone());
+    let signature: Option<String> = webhook_secret
+        .map(|secret| {
+            let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
+                .context("WEBHOOK_SECRET is invalid for HMAC")?;
+            mac.update(&body);
+            Ok::<_, anyhow::Error>(hex::encode(mac.finalize().into_bytes()))
+        })
+        .transpose()?;
 
-    if let Some(secret) = webhook_secret {
-        let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
-            .context("WEBHOOK_SECRET is invalid for HMAC")?;
-        mac.update(&body);
-        let signature = hex::encode(mac.finalize().into_bytes());
-        request = request.header("x-aegis-signature", format!("sha256={signature}"));
+    const MAX_RETRIES: u32 = 3;
+    let mut last_err = None;
+    for attempt in 0..=MAX_RETRIES {
+        let mut req = client
+            .post(webhook_url)
+            .header("content-type", "application/json")
+            .body(body.clone());
+        if let Some(ref sig) = signature {
+            req = req.header("x-aegis-signature", format!("sha256={sig}"));
+        }
+        match req.send().await {
+            Ok(res) => {
+                if res.status().is_success() {
+                    return Ok(());
+                }
+                last_err = Some(anyhow::anyhow!("webhook responded with {}", res.status()));
+                warn!("policy violation webhook responded with {} (attempt {})", res.status(), attempt + 1);
+            }
+            Err(e) => {
+                last_err = Some(e.into());
+                warn!("policy violation webhook send failed (attempt {}): {}", attempt + 1, last_err.as_ref().unwrap());
+            }
+        }
+        if attempt < MAX_RETRIES {
+            let delay_ms = 500u64 * (1 << attempt);
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+        }
     }
-
-    let res = request
-        .send()
-        .await
-        .context("failed to send policy violation webhook")?;
-    if !res.status().is_success() {
-        warn!("policy violation webhook responded with {}", res.status());
-    }
-    Ok(())
+    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("webhook failed after {} retries", MAX_RETRIES)))
 }
 
 pub async fn report_receipt_if_configured(

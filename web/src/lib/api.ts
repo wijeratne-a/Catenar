@@ -55,6 +55,81 @@ type SessionResponse = {
   user: { username: string; role: UserRole; org_id: string; auth_source: "demo" | "oidc" } | null;
 };
 
+type AgentListResponse = { agents: import("./types").Agent[] };
+
+export function useAgents() {
+  return useQuery({
+    queryKey: ["agents"],
+    queryFn: async () => {
+      const res = await fetch("/api/agents", { credentials: "include" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as AgentListResponse;
+      return data.agents ?? [];
+    },
+    refetchInterval: 30000,
+  });
+}
+
+type AlertListResponse = {
+  alerts: Array<{
+    id: string;
+    event: string;
+    policy_commitment: string;
+    domain: string;
+    reason: string;
+    timestamp_ns: number;
+    received_at: string;
+    severity: string;
+  }>;
+  total: number;
+  nextOffset?: number;
+};
+
+export function useAlerts(options?: { domain?: string }) {
+  return useQuery({
+    queryKey: ["alerts", options?.domain],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (options?.domain) params.set("domain", options.domain);
+      const res = await fetch(`/api/alerts?${params}`, { credentials: "include" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
+      return res.json() as Promise<AlertListResponse>;
+    },
+    refetchInterval: 10000,
+  });
+}
+
+type PolicyHistoryResponse = {
+  history: Array<{
+    policy_commitment: string;
+    policy_storage_key: string;
+    org_id: string;
+    created_at: string;
+  }>;
+  nextOffset?: number;
+};
+
+export function usePolicyHistory() {
+  return useQuery({
+    queryKey: ["policy-history"],
+    queryFn: async () => {
+      const res = await fetch("/api/policy/history", { credentials: "include" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
+      return res.json() as Promise<PolicyHistoryResponse>;
+    },
+    refetchInterval: 60000,
+  });
+}
+
 export function useSession() {
   return useQuery({
     queryKey: ["session"],

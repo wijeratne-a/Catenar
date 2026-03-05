@@ -1,5 +1,7 @@
 use std::{fs, net::SocketAddr, sync::Arc};
 
+use dashmap::DashMap;
+
 use anyhow::{Context, Result};
 use hyper::{
     body::Incoming,
@@ -30,9 +32,25 @@ fn env_var_non_empty(key: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+fn env_var_true(key: &str) -> bool {
+    std::env::var(key)
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false)
+}
+
 fn build_http_client(upstream_timeout_secs: u64) -> Result<reqwest::Client> {
-    let mut builder =
-        reqwest::Client::builder().timeout(std::time::Duration::from_secs(upstream_timeout_secs));
+    let connect_timeout = std::time::Duration::from_secs(3);
+    let read_timeout = std::time::Duration::from_secs(
+        std::env::var("UPSTREAM_READ_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .filter(|&s| s >= 1 && s <= 60)
+            .unwrap_or(5),
+    );
+    let mut builder = reqwest::Client::builder()
+        .connect_timeout(connect_timeout)
+        .read_timeout(read_timeout)
+        .timeout(std::time::Duration::from_secs(upstream_timeout_secs));
 
     if let Some(ca_path) = env_var_non_empty("VERIFIER_TLS_CA_PATH") {
         let ca_pem = fs::read(&ca_path)
@@ -100,6 +118,9 @@ async fn main() -> Result<()> {
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty());
+    let metrics_enabled = env_var_true("METRICS_ENABLED");
+    let policy_debug = env_var_true("POLICY_DEBUG");
+    telemetry::set_metrics_enabled(metrics_enabled);
 
     let upstream_timeout_secs = std::env::var("UPSTREAM_TIMEOUT_SECS")
         .ok()
@@ -176,6 +197,8 @@ async fn main() -> Result<()> {
             verifier_url,
             policy,
             semantic_deny,
+            metrics_enabled,
+            policy_debug,
         }),
         webhook: webhook_url.zip(webhook_secret).and_then(|(url, secret)| {
             if secret.len() < 32 {
@@ -193,6 +216,7 @@ async fn main() -> Result<()> {
         schema_registry,
         ca_pem: Some(ca_pem),
         live_policy,
+        rate_limit: Arc::new(DashMap::new()),
     };
 
     let addr: SocketAddr = bind
