@@ -9,6 +9,7 @@ export type StoredAlert = {
   reason: string;
   timestamp_ns: number;
   received_at: string;
+  severity?: string;
 };
 
 const alerts: StoredAlert[] = [];

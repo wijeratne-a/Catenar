@@ -396,10 +396,14 @@ fn response_with(status: StatusCode, body: &str) -> Response<ProxyBody> {
         .status(status)
         .header("content-type", "application/json")
         .body(Full::new(bytes::Bytes::from(body.to_owned())))
-        .unwrap_or_else(|_| response_500())
+        .unwrap_or_else(|e| {
+            tracing::error!("response builder failed, returning 500: {:?}", e);
+            response_500()
+        })
 }
 
 fn response_500() -> Response<ProxyBody> {
+    tracing::error!("returning generic 500 internal error");
     Response::builder()
         .status(StatusCode::INTERNAL_SERVER_ERROR)
         .header("content-type", "application/json")
@@ -432,7 +436,10 @@ fn block_response(
             .body(Full::new(bytes::Bytes::from(
                 serde_json::to_string(&body).unwrap_or_else(|_| r#"{"status":"error","aegis_block":true}"#.to_string()),
             )))
-            .unwrap_or_else(|_| response_500())
+            .unwrap_or_else(|e| {
+                tracing::error!("block_response semantic body build failed: {:?}", e);
+                response_500()
+            })
     } else {
         Response::builder()
             .status(status_when_strict)
@@ -445,7 +452,10 @@ fn block_response(
                 }))
                 .unwrap_or_else(|_| r#"{"error":"policy violation"}"#.to_string()),
             )))
-            .unwrap_or_else(|_| response_500())
+            .unwrap_or_else(|e| {
+                tracing::error!("block_response strict body build failed: {:?}", e);
+                response_500()
+            })
     }
 }
 
@@ -561,7 +571,10 @@ pub async fn handle(
                 .status(StatusCode::OK)
                 .header("content-type", "text/plain; version=0.0.4; charset=utf-8")
                 .body(Full::new(bytes::Bytes::from(body)))
-                .unwrap_or_else(|_| response_500()));
+                .unwrap_or_else(|e| {
+                    tracing::error!("ca response body build failed: {:?}", e);
+                    response_500()
+                }));
         }
         if path == "/healthz" {
             let verifier_health = format!(
@@ -585,7 +598,10 @@ pub async fn handle(
                     .status(StatusCode::OK)
                     .header("content-type", "application/x-pem-file")
                     .body(Full::new(bytes::Bytes::from(ca.clone())))
-                    .unwrap_or_else(|_| response_500()));
+                    .unwrap_or_else(|e| {
+                        tracing::error!("ca cert response build failed: {:?}", e);
+                        response_500()
+                    }));
             }
         }
         if path == "/policy/current" && remote_addr.ip().is_loopback() {
@@ -917,7 +933,10 @@ pub async fn handle(
 
     let resp = resp_builder
         .body(Full::new(response_body))
-        .unwrap_or_else(|_| response_500());
+        .unwrap_or_else(|e| {
+            tracing::error!("forward response build failed: {:?}", e);
+            response_500()
+        });
     info!(
         method = method.as_str(),
         target = target,
@@ -1083,7 +1102,10 @@ async fn handle_connect(
     Ok(Response::builder()
         .status(StatusCode::OK)
         .body(Full::new(bytes::Bytes::new()))
-        .unwrap_or_else(|_| response_500()))
+        .unwrap_or_else(|e| {
+            tracing::error!("empty error response build failed: {:?}", e);
+            response_500()
+        }))
 }
 
 async fn run_mitm_tunnel(
@@ -1124,7 +1146,10 @@ async fn run_mitm_tunnel(
             Ok::<_, hyper::Error>(
                 handle_mitm_request(state, authority, req)
                     .await
-                    .unwrap_or_else(|_| response_500()),
+                    .unwrap_or_else(|e| {
+                        tracing::error!("handle_mitm_request failed, returning 500: {:?}", e);
+                        response_500()
+                    }),
             )
         }
     });
@@ -1365,7 +1390,10 @@ async fn handle_mitm_request(
                     .body(Full::new(bytes::Bytes::from(
                         r#"{"error":"policy evaluation failed"}"#,
                     )))
-                    .unwrap_or_else(|_| response_500()));
+                    .unwrap_or_else(|e| {
+                        tracing::error!("payload verification response build failed: {:?}", e);
+                        response_500()
+                    }));
             }
             _ => {
                 telemetry::observe_policy_eval_ms(policy_eval_started.elapsed().as_secs_f64() * 1000.0);
@@ -1650,7 +1678,10 @@ async fn handle_mitm_request(
                     .body(Full::new(bytes::Bytes::from(
                         r#"{"error":"policy evaluation failed"}"#,
                     )))
-                    .unwrap_or_else(|_| response_500()));
+                    .unwrap_or_else(|e| {
+                        tracing::error!("response policy block build failed: {:?}", e);
+                        response_500()
+                    }));
             }
             _ => {
                 telemetry::observe_policy_eval_ms(policy_eval_started.elapsed().as_secs_f64() * 1000.0);
@@ -1686,7 +1717,10 @@ async fn handle_mitm_request(
     }
     let resp = resp_builder
         .body(Full::new(body_bytes))
-        .unwrap_or_else(|_| response_500());
+        .unwrap_or_else(|e| {
+            tracing::error!("final response body build failed: {:?}", e);
+            response_500()
+        });
     append_trace_entry(
         &state,
         request_id,

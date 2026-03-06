@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { policyViolationWebhookSchema } from "@/lib/schemas";
 import { pushAlert } from "@/lib/alert-store";
 import { ensureStartupValidation } from "@/lib/startup";
+import { classifyViolation } from "@/lib/severity";
 
 const MAX_BODY_BYTES = 16 * 1024; // 16 KB
 
@@ -57,6 +58,7 @@ export async function POST(request: NextRequest) {
   }
 
   const incidentId = `inc-${new Date().toISOString().slice(0, 10)}-${crypto.randomUUID().slice(0, 8)}`;
+  const severity = classifyViolation(result.data.reason);
   pushAlert({
     event: result.data.event,
     policy_commitment: result.data.policy_commitment,
@@ -64,6 +66,7 @@ export async function POST(request: NextRequest) {
     reason: result.data.reason,
     timestamp_ns: result.data.timestamp_ns,
     incident_id: incidentId,
+    severity: severity.toString(),
   });
 
   return NextResponse.json({ status: "ok" }, { status: 202 });

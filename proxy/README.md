@@ -26,3 +26,7 @@ cargo run
 | UPSTREAM_TIMEOUT_SECS | 10 | Timeout in seconds for upstream requests (1–300) |
 | AEGIS_CA_CERT_PATH | (unset) | PEM cert for BYO Root CA (enterprise PKI) |
 | AEGIS_CA_KEY_PATH | (unset) | PEM private key for BYO Root CA |
+
+## Trace Log
+
+The proxy can write a trace WAL (write-ahead log) for audit. Each entry includes a `chain_hash` field. The chain is computed with BLAKE3 using derive key `aegis.trace.chain.v1` (previous hash + payload). Third-party verification must use the same key to reproduce hashes. See `proxy/src/trace_log.rs` → `compute_chain_hash`.

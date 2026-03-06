@@ -70,6 +70,8 @@ fn with_chain_hash<T: Serialize>(value: &T, chain_hash: &str) -> Result<String> 
     }
 }
 
+/// Chain hash: BLAKE3 with derive key "aegis.trace.chain.v1".
+/// Third-party verification must use the same key to reproduce hashes.
 fn compute_chain_hash(previous_hash: &str, payload: &str) -> String {
     let mut hasher = blake3::Hasher::new_derive_key("aegis.trace.chain.v1");
     let prev_bytes = previous_hash.as_bytes();

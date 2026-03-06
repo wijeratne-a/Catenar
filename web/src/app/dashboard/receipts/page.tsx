@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,10 +34,12 @@ function PotReceiptCard({
   proof,
   masked,
   receivedAt,
+  sameAgentCount,
 }: {
   proof: PotReceipt;
   masked: boolean;
   receivedAt?: string;
+  sameAgentCount?: number;
 }) {
   const hasIdentity = proof.agent_id != null || proof.identity_hash != null;
   const humanContext = proof.agent_id ? getHumanContext(proof.agent_id) : null;
@@ -50,12 +53,18 @@ function PotReceiptCard({
   return (
     <Card className="border-border/50">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">Receipt</Badge>
+          <Badge className="bg-green-600/15 text-green-700 border border-green-600/30">Verified</Badge>
           <MaskedText text={proof.receipt_id} masked={masked} />
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 font-mono text-sm">
+        {sameAgentCount != null && sameAgentCount > 0 && (
+          <p className="text-xs text-muted-foreground">
+            Activity: {sameAgentCount} receipt{sameAgentCount !== 1 ? "s" : ""} from this agent in this view
+          </p>
+        )}
         {actorDisplay && (
           <div className="rounded border border-blue-500/30 bg-blue-50/50 p-3 dark:border-blue-500/20 dark:bg-blue-950/20">
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -218,6 +227,13 @@ export default function ReceiptsPage() {
         </Card>
       )}
 
+      <p className="mt-4 text-sm text-muted-foreground">
+        <Link href="/dashboard/alerts" className="underline hover:text-foreground">
+          View policy alerts
+        </Link>{" "}
+        | Recent incidents
+      </p>
+
       <section className="mt-8">
         <h2 className="text-lg font-semibold">Live Feed</h2>
         <p className="text-sm text-muted-foreground">Recent sidecar receipts (auto-refresh every 5s)</p>
@@ -225,14 +241,25 @@ export default function ReceiptsPage() {
           {!receiptsQuery.data || receiptsQuery.data.length === 0 ? (
             <p className="text-sm text-muted-foreground">No receipts yet.</p>
           ) : (
-            receiptsQuery.data.map((entry) => (
-              <div key={entry.value.receipt_id} className="space-y-2">
-                <p className="text-xs text-muted-foreground">
-                  received_at: {masked ? maskSensitiveData(entry.received_at) : entry.received_at}
-                </p>
-                <PotReceiptCard proof={entry.value} masked={masked} receivedAt={entry.received_at} />
-              </div>
-            ))
+            receiptsQuery.data.map((entry) => {
+              const sameAgentCount =
+                entry.value.agent_id != null
+                  ? receiptsQuery.data!.filter((e) => e.value.agent_id === entry.value.agent_id).length
+                  : undefined;
+              return (
+                <div key={entry.value.receipt_id} className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    received_at: {masked ? maskSensitiveData(entry.received_at) : entry.received_at}
+                  </p>
+                  <PotReceiptCard
+                    proof={entry.value}
+                    masked={masked}
+                    receivedAt={entry.received_at}
+                    sameAgentCount={sameAgentCount}
+                  />
+                </div>
+              );
+            })
           )}
         </div>
       </section>
