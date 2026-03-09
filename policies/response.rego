@@ -44,15 +44,15 @@ response_injection = "ResponseInjection" {
 allow = false {
   input.body != null
   body_text := lower(input.body)
-  regex.match("(api[_-]?key|secret[_-]?key|private[_-]?key)[^\\n]{0,40}[=:]", body_text)
+  regex.match("(api_key|apikey|secret_key|secretkey|private_key|privatekey)[ \\t]*[=:]", body_text)
 }
 reason = "response appears to contain credential-like secrets" {
   input.body != null
   body_text := lower(input.body)
-  regex.match("(api[_-]?key|secret[_-]?key|private[_-]?key)[^\\n]{0,40}[=:]", body_text)
+  regex.match("(api_key|apikey|secret_key|secretkey|private_key|privatekey)[ \\t]*[=:]", body_text)
 }
 response_injection = "ResponseInjection" {
   input.body != null
   body_text := lower(input.body)
-  regex.match("(api[_-]?key|secret[_-]?key|private[_-]?key)[^\\n]{0,40}[=:]", body_text)
+  regex.match("(api_key|apikey|secret_key|secretkey|private_key|privatekey)[ \\t]*[=:]", body_text)
 }

@@ -53,8 +53,7 @@ impl SchemaRegistry {
         }
 
         // JSONSchema::compile requires 'static reference. Leak storage (one-time config load).
-        let schema_storage: &'static [JsonValue] =
-            Box::leak(schema_storage.into_boxed_slice());
+        let schema_storage: &'static [JsonValue] = Box::leak(schema_storage.into_boxed_slice());
 
         let mut map: SchemaMap = HashMap::new();
         for (host, method, path_key, idx) in entries {
@@ -95,7 +94,10 @@ impl SchemaRegistry {
         // Find longest matching path prefix
         let mut best_match: Option<(&str, &JSONSchema)> = None;
         for (registered_path, schema) in path_map.iter() {
-            if path == *registered_path || path.starts_with(&format!("{}/", registered_path)) || path.starts_with(registered_path) {
+            if path == *registered_path
+                || path.starts_with(&format!("{}/", registered_path))
+                || path.starts_with(registered_path)
+            {
                 if best_match.map(|(p, _)| p.len()).unwrap_or(0) < registered_path.len() {
                     best_match = Some((registered_path, schema));
                 }

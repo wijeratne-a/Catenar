@@ -131,10 +131,7 @@ impl ResponsePolicyEngine {
             .and_then(|expr| expr.value.as_string().ok().map(|s| s.to_string()));
 
         let response_injection = engine
-            .eval_query(
-                "data.aegis.response.response_injection".to_string(),
-                false,
-            )
+            .eval_query("data.aegis.response.response_injection".to_string(), false)
             .ok()
             .and_then(|results| results.result.first().cloned())
             .and_then(|row| row.expressions.first().cloned())

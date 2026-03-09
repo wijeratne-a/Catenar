@@ -76,6 +76,28 @@ const { Aegis } = require('./dist/index.js');
 "
 ```
 
+## Stress Test (Zero-Config Intercept)
+
+Uses `aegis_intercept` to auto-trace all HTTP calls without decorators:
+
+```bash
+# Install httpx for intercept
+pip install httpx
+
+# Set proxy (NO_PROXY for verifier so register/verify go direct)
+export HTTP_PROXY=http://127.0.0.1:8080
+export HTTPS_PROXY=http://127.0.0.1:8080
+export NO_PROXY=127.0.0.1,localhost
+export REQUESTS_CA_BUNDLE=/etc/aegis/ca.crt  # or path to proxy CA
+
+python examples/stress_test_agent.py
+```
+
+## Developer Tools
+
+- **Debug Watch**: Tail proxy trace WAL in real time: `cargo run --manifest-path dev/cli/Cargo.toml -- debug watch`
+- **Chain Verify**: Verify BLAKE3 hash chain: `cargo run --manifest-path tools/aegis-verify/Cargo.toml -- ./data/proxy-trace.jsonl`
+
 ## Webhook + Alerts
 
 To receive policy violation alerts in the Control Plane:

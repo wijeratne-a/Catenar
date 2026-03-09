@@ -111,7 +111,11 @@ async fn api_key_middleware(
     next: Next,
 ) -> Response {
     let Some(ref expected) = state.api_key else {
-        return next.run(request).await;
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "API key required" })),
+        )
+            .into_response();
     };
     let provided = request
         .headers()
@@ -259,6 +263,13 @@ async fn main() -> anyhow::Result<()> {
 
     let cors = build_cors_layer();
 
+    let healthz = Router::new()
+        .route("/healthz", get(healthz_handler))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            rate_limit_middleware,
+        ));
+
     let protected = Router::new()
         .route("/v1/register", post(register_handler))
         .route("/v1/verify", post(verify_handler))
@@ -275,7 +286,7 @@ async fn main() -> anyhow::Result<()> {
         ));
 
     let app = Router::new()
-        .route("/healthz", get(healthz_handler))
+        .merge(healthz)
         .merge(protected)
         .with_state(state)
         .layer(RequestBodyLimitLayer::new(1024 * 1024)) // 1 MB

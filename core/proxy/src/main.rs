@@ -1,15 +1,12 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{fs, net::SocketAddr, sync::Arc};
 
 use dashmap::DashMap;
 
 use anyhow::{Context, Result};
-use hyper::{
-    body::Incoming,
-    server::conn::http1,
-    service::service_fn,
-    Request,
-};
-use hyper_util::rt::TokioIo;
+use hyper::{body::Incoming, service::service_fn, Request};
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto;
 use tokio::net::TcpListener;
 use tracing::{error, info};
 
@@ -22,7 +19,9 @@ mod trace_log;
 mod webhook;
 
 use certs::{build_mitm_server_config, RootCa};
-use intercept::{EnforceMode, LivePolicy, PolicyConfig, ProxyConfig, ProxyState};
+use intercept::{
+    EnforceMode, HeartbeatLogEntry, LivePolicy, PolicyConfig, ProxyConfig, ProxyState,
+};
 use trace_log::TraceLogger;
 
 fn env_var_non_empty(key: &str) -> Option<String> {
@@ -134,7 +133,10 @@ async fn main() -> Result<()> {
         });
 
     let policy = read_policy(&policy_path).unwrap_or_else(|err| {
-        error!("failed to load policy from {}: {}; defaulting empty", policy_path, err);
+        error!(
+            "failed to load policy from {}: {}; defaulting empty",
+            policy_path, err
+        );
         PolicyConfig::default()
     });
 
@@ -162,8 +164,8 @@ async fn main() -> Result<()> {
 
     let mitm_server_config = build_mitm_server_config(root_ca)?;
 
-    let payload_engine = std::env::var("POLICY_REGO_PATH")
-        .unwrap_or_else(|_| "policies/payload.rego".to_string());
+    let payload_engine =
+        std::env::var("POLICY_REGO_PATH").unwrap_or_else(|_| "policies/payload.rego".to_string());
     let payload_engine = payload_policy::PayloadPolicyEngine::load_from_path(&payload_engine)
         .map(Arc::new)
         .ok();
@@ -174,12 +176,18 @@ async fn main() -> Result<()> {
             .map(Arc::new)
             .ok();
 
-    let schema_registry = std::env::var("SCHEMA_REGISTRY_PATH")
-        .ok()
-        .or_else(|| std::env::var("SCHEMA_DIR").ok().map(|d| format!("{}/registry.json", d)));
+    let schema_registry = std::env::var("SCHEMA_REGISTRY_PATH").ok().or_else(|| {
+        std::env::var("SCHEMA_DIR")
+            .ok()
+            .map(|d| format!("{}/registry.json", d))
+    });
     let schema_registry = schema_registry
         .as_ref()
-        .and_then(|p| schema_validator::SchemaRegistry::load_from_path(p).ok().flatten())
+        .and_then(|p| {
+            schema_validator::SchemaRegistry::load_from_path(p)
+                .ok()
+                .flatten()
+        })
         .map(Arc::new);
 
     if schema_registry.is_some() {
@@ -217,7 +225,53 @@ async fn main() -> Result<()> {
         ca_pem: Some(ca_pem),
         live_policy,
         rate_limit: Arc::new(DashMap::new()),
+        degraded_mode: Arc::new(AtomicBool::new(false)),
     };
+
+    let degraded_mode = state.degraded_mode.clone();
+    let verifier_url = state.config.verifier_url.clone();
+    let client = state.client.clone();
+    let logger = state.logger.clone();
+    tokio::spawn(async move {
+        let mut consecutive_failures: u32 = 0;
+        const FAILURE_THRESHOLD: u32 = 3;
+        const TICK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+        loop {
+            tokio::time::sleep(TICK_INTERVAL).await;
+            let health_url = format!("{}/healthz", verifier_url.trim_end_matches('/'));
+            let healthy = client.get(&health_url).send().await;
+            let ok = healthy
+                .as_ref()
+                .map(|r| r.status().is_success())
+                .unwrap_or(false);
+            if ok {
+                if degraded_mode.load(Ordering::Relaxed) {
+                    degraded_mode.store(false, Ordering::Relaxed);
+                    tracing::info!("Verifier recovered. Exiting degraded mode.");
+                }
+                consecutive_failures = 0;
+            } else {
+                consecutive_failures += 1;
+                if consecutive_failures >= FAILURE_THRESHOLD
+                    && !degraded_mode.load(Ordering::Relaxed)
+                {
+                    degraded_mode.store(true, Ordering::Relaxed);
+                    tracing::warn!("Verifier unreachable. Entering degraded mode (Audit-Only).");
+                }
+                if degraded_mode.load(Ordering::Relaxed) {
+                    let entry = HeartbeatLogEntry {
+                        timestamp_ns: chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default(),
+                        action: "heartbeat".to_string(),
+                        target: "aegis-proxy-degraded".to_string(),
+                        status: "degraded".to_string(),
+                    };
+                    if let Err(e) = logger.append(&entry) {
+                        tracing::warn!("failed to write degraded heartbeat: {}", e);
+                    }
+                }
+            }
+        }
+    });
 
     let addr: SocketAddr = bind
         .parse()
@@ -238,7 +292,9 @@ async fn main() -> Result<()> {
                         Ok(resp) => resp,
                         Err(err) => {
                             error!("proxy request handling error: {err}");
-                            let body = if state.config.enforce_mode == EnforceMode::AuditOnly {
+                            let body = if state.config.enforce_mode == EnforceMode::AuditOnly
+                                || state.degraded_mode.load(Ordering::Relaxed)
+                            {
                                 r#"{"warning":"proxy error in audit_only mode"}"#
                             } else {
                                 r#"{"error":"proxy failure in strict mode"}"#
@@ -261,11 +317,10 @@ async fn main() -> Result<()> {
                 }
             });
 
-            if let Err(err) = http1::Builder::new()
+            if let Err(err) = auto::Builder::new(TokioExecutor::new())
                 .preserve_header_case(true)
                 .title_case_headers(true)
-                .serve_connection(io, svc)
-                .with_upgrades()
+                .serve_connection_with_upgrades(io, svc)
                 .await
             {
                 error!("connection error: {err}");

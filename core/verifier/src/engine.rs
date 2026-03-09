@@ -1,3 +1,14 @@
+// ENTERPRISE_EXTENSION_POINT: The following stubs are placeholders for closed-source features.
+
+//! Verification engine for Aegis PoT receipts.
+//!
+//! ## Enterprise Control Plane Boundary
+//!
+//! The open-core engine provides local verification, policy evaluation, and receipt signing.
+//! Enterprise capabilities (global idempotency, HSM signing, multisig policy validation,
+//! distributed lease consensus) are extension points that require a commercial license.
+//! Stubs below document the boundary and return errors when invoked without the enterprise module.
+
 use std::fmt::Write;
 
 use anyhow::{Context, Result, bail};
@@ -17,6 +28,45 @@ use crate::{
     store::{AgentStore, PolicyStore},
     telemetry,
 };
+
+// ---------------------------------------------------------------------------
+// Enterprise Control Plane stubs (closed-source extension points)
+// ---------------------------------------------------------------------------
+
+/// Enterprise: Global idempotency state. Rejects duplicate trace submissions.
+/// Requires distributed deduplication ledger.
+pub fn check_idempotency(
+    _agent_id: &str,
+    _request_id: &str,
+    _timestamp_ns: i64,
+) -> Result<bool> {
+    bail!("Enterprise feature: requires commercial license");
+}
+
+/// Enterprise: Hardware-backed HSM (AWS CloudHSM/Yubico). Receipt signatures must be HSM-signed.
+pub fn require_hsm_signing(_data: &[u8]) -> Result<Vec<u8>> {
+    bail!("Enterprise feature: requires commercial license");
+}
+
+/// Enterprise: 2-of-2 multisig for policy commitments. Operator + Compliance officer.
+pub fn validate_policy_multisig(
+    _commitment: &[u8],
+    _sig1: &[u8],
+    _sig2: &[u8],
+) -> Result<bool> {
+    bail!("Enterprise feature: requires commercial license");
+}
+
+/// Enterprise: Distributed lease consensus. Prevents multi-zone deadlocks.
+pub fn acquire_lease(
+    _agent_id: &str,
+    _window_start_ns: i64,
+    _window_end_ns: i64,
+) -> Result<bool> {
+    bail!("Enterprise feature: requires commercial license");
+}
+
+// ---------------------------------------------------------------------------
 
 fn classify_violation(reason: &str) -> telemetry::ViolationType {
     let reason_lc = reason.to_ascii_lowercase();
@@ -388,6 +438,9 @@ mod tests {
     use httpmock::Method::POST;
     use httpmock::MockServer;
 
+    /// Test placeholder secret (not a real credential) - satisfies length requirements for scanners.
+    const TEST_WEBHOOK_SECRET: &str = "test-secret-value-must-be-at-least-32-bytes!";
+
     #[tokio::test]
     async fn sends_webhook_with_signature() {
         let server = MockServer::start_async().await;
@@ -426,7 +479,7 @@ mod tests {
         send_policy_violation_webhook(
             &client,
             &format!("{}/hook", server.base_url()),
-            Some("super-secret"),
+            Some(TEST_WEBHOOK_SECRET),
             &PolicyViolationWebhook {
                 event: "policy_violation_denied",
                 policy_commitment: &request.policy_commitment,

@@ -6,8 +6,10 @@ use std::{
 
 use anyhow::Result;
 use opentelemetry::{
-    global, metrics::{Counter, Histogram}, trace::TracerProvider as _, InstrumentationScope,
-    KeyValue,
+    global,
+    metrics::{Counter, Histogram},
+    trace::TracerProvider as _,
+    InstrumentationScope, KeyValue,
 };
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
@@ -30,7 +32,9 @@ static METRICS: OnceLock<Metrics> = OnceLock::new();
 static CONSECUTIVE_VIOLATIONS: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
 static PROM_SNAPSHOT: OnceLock<Mutex<PrometheusSnapshot>> = OnceLock::new();
 
-const HISTOGRAM_BUCKETS_MS: &[f64] = &[1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0];
+const HISTOGRAM_BUCKETS_MS: &[f64] = &[
+    1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0,
+];
 
 #[derive(Default)]
 struct HistogramState {
@@ -51,7 +55,11 @@ impl HistogramState {
     }
 
     fn record(&mut self, value_ms: f64) {
-        let value = if value_ms.is_finite() { value_ms.max(0.0) } else { 0.0 };
+        let value = if value_ms.is_finite() {
+            value_ms.max(0.0)
+        } else {
+            0.0
+        };
         self.sum += value;
         self.count = self.count.saturating_add(1);
         let mut placed = false;
@@ -133,8 +141,7 @@ pub fn increment_request(host: &str) {
         s.requests_total = s.requests_total.saturating_add(1);
     });
     if let Some(m) = METRICS.get() {
-        m.request
-            .add(1, &[KeyValue::new("host", host.to_string())]);
+        m.request.add(1, &[KeyValue::new("host", host.to_string())]);
     }
 }
 
@@ -147,10 +154,7 @@ pub fn increment_blocked(host: &str, violation_type: ViolationType) {
             KeyValue::new("host", host.to_string()),
             KeyValue::new("violation_type", violation_type.to_string()),
         ];
-        m.blocked.add(
-            1,
-            &labels,
-        );
+        m.blocked.add(1, &labels);
         m.violation_rate.add(1, &labels);
 
         let streak = {
@@ -170,8 +174,7 @@ pub fn increment_timeout(host: &str) {
         s.timeout_total = s.timeout_total.saturating_add(1);
     });
     if let Some(m) = METRICS.get() {
-        m.timeout
-            .add(1, &[KeyValue::new("host", host.to_string())]);
+        m.timeout.add(1, &[KeyValue::new("host", host.to_string())]);
     }
 }
 
@@ -193,18 +196,16 @@ pub fn observe_policy_eval_ms(value_ms: f64) {
     });
 }
 
-fn render_histogram(
-    out: &mut String,
-    metric: &str,
-    state: &HistogramState,
-) {
+fn render_histogram(out: &mut String, metric: &str, state: &HistogramState) {
     let mut cumulative = 0u64;
     for (idx, le) in HISTOGRAM_BUCKETS_MS.iter().enumerate() {
         cumulative = cumulative.saturating_add(state.bucket_counts[idx]);
         out.push_str(&format!("{metric}_bucket{{le=\"{le}\"}} {cumulative}\n"));
     }
     let inf_cumulative = cumulative.saturating_add(state.inf_count);
-    out.push_str(&format!("{metric}_bucket{{le=\"+Inf\"}} {inf_cumulative}\n"));
+    out.push_str(&format!(
+        "{metric}_bucket{{le=\"+Inf\"}} {inf_cumulative}\n"
+    ));
     out.push_str(&format!("{metric}_sum {}\n", state.sum));
     out.push_str(&format!("{metric}_count {}\n", state.count));
 }
@@ -289,8 +290,8 @@ pub fn init_telemetry() -> Result<()> {
             .with_batch_exporter(span_exporter, runtime::Tokio)
             .build();
 
-        let tracer = tracer_provider
-            .tracer_with_scope(InstrumentationScope::builder(service_name).build());
+        let tracer =
+            tracer_provider.tracer_with_scope(InstrumentationScope::builder(service_name).build());
         global::set_tracer_provider(tracer_provider);
 
         let metric_exporter = opentelemetry_otlp::MetricExporter::builder()

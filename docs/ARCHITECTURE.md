@@ -42,3 +42,15 @@ Aegis is a Zero Trust Network Access (ZTNA) layer for AI agents. It sits between
 ## Policy as Code
 
 Rego policies live in `policies/` (payload.rego, response.rego, default.rego). Helm mounts them via ConfigMap. For GitOps, policies are managed in version control and deployed via CI/CD.
+
+## Enterprise Control Plane (Closed Source)
+
+The open-core verifier exposes extension points for enterprise capabilities that require a commercial license. These features address compliance, auditability, and operational scale that regulated or multi-zone deployments demand.
+
+- **Global Idempotency State**: Distributed deduplication ledger that rejects duplicate trace submissions across agents and zones. Enterprise-only because it requires consensus infrastructure (e.g., etcd, DynamoDB conditional writes) and operational SLAs; defensibility comes from preventing replay attacks and audit integrity at scale.
+
+- **Hardware-Backed HSM Signing**: Receipt signatures produced via AWS CloudHSM, Yubico, or equivalent. Enterprise-only due to HSM provisioning, key custody, and compliance certifications (FIPS 140-2, PCI-DSS); defensibility comes from non-exportable keys and audit trails that satisfy regulators.
+
+- **Multi-Signature Policy Validation**: 2-of-2 multisig (Operator + Compliance officer) for policy commitments. Enterprise-only because it requires identity federation and approval workflows; defensibility comes from separation-of-duty and change-control guarantees for high-risk environments.
+
+- **Distributed Lease Consensus**: Prevents multi-zone deadlocks when agents contend for resources. Enterprise-only because it requires Raft/Paxos or similar consensus; defensibility comes from correct behavior under partition and failover, which open-core single-node deployments cannot guarantee.

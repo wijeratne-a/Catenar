@@ -56,6 +56,17 @@ See [docs/demo/getting-started.md](docs/demo/getting-started.md) for full demo i
 | Node.js SDK | [sdks/nodejs](sdks/nodejs) | Aegis Proof-of-Task SDK for Node.js |
 | Dashboard | [dashboard](dashboard) | Next.js control plane UI |
 
+## Developer Tools
+
+| Tool | Command | Description |
+|------|---------|-------------|
+| Debug Watch | `make debug` or `cargo run --manifest-path dev/cli/Cargo.toml -- debug watch` | Tail proxy trace WAL and show policy decisions, BLAKE3 hashes in real time |
+| Chain Verify | `make verify` or `cargo run --manifest-path tools/aegis-verify/Cargo.toml -- ./data/proxy-trace.jsonl` | Verify BLAKE3 hash chain integrity of a trace log locally |
+
+## Examples
+
+- **[examples/stress_test_agent.py](examples/stress_test_agent.py)**: Stress test with 100+ concurrent HTTP calls. Uses `aegis_intercept` for zero-config tracing. Run with proxy and verifier: `HTTP_PROXY=http://127.0.0.1:8080 python examples/stress_test_agent.py`
+
 ## Open Core
 
 **Aegis Community Edition** is open source under the [Apache 2.0 License](LICENSE). Enterprise features (RBAC, advanced audit, SOC2 compliance) are planned and available under commercial license. Contact for licensing.

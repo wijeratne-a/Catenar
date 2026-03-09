@@ -59,8 +59,9 @@ impl RootCa {
             rcgen::DnType::CommonName,
             rcgen::DnValue::Utf8String("Aegis Proxy Root CA".into()),
         );
-        params.subject_alt_names =
-            vec![SanType::DnsName(rcgen::string::Ia5String::try_from("aegis-proxy-ca.local")?)];
+        params.subject_alt_names = vec![SanType::DnsName(rcgen::string::Ia5String::try_from(
+            "aegis-proxy-ca.local",
+        )?)];
         params.is_ca = IsCa::Ca(BasicConstraints::Constrained(0));
         params.key_usages = vec![
             rcgen::KeyUsagePurpose::KeyCertSign,
@@ -78,8 +79,8 @@ impl RootCa {
 
     /// Forge a leaf certificate for the given SNI hostname, signed by this CA.
     pub fn forge_leaf(&self, sni: &str) -> Result<rustls::sign::CertifiedKey> {
-        let mut params = CertificateParams::new(vec![sni.to_string()])
-            .context("invalid SNI for certificate")?;
+        let mut params =
+            CertificateParams::new(vec![sni.to_string()]).context("invalid SNI for certificate")?;
         params.is_ca = IsCa::NoCa;
         params.key_usages = vec![
             rcgen::KeyUsagePurpose::DigitalSignature,

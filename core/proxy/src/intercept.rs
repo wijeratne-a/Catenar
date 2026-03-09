@@ -1,6 +1,11 @@
 use std::cell::Cell;
-use std::{net::{IpAddr, SocketAddr}, str::FromStr, sync::{Arc, RwLock}};
+use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
+use std::{
+    net::{IpAddr, SocketAddr},
+    str::FromStr,
+    sync::{Arc, RwLock},
+};
 
 use dashmap::DashMap;
 
@@ -8,14 +13,15 @@ use rustls::ServerConfig;
 
 use anyhow::{Context, Result};
 use chrono::Utc;
+use futures_util::StreamExt;
 use http::{
-    header::{HOST, HeaderValue},
+    header::{HeaderValue, HOST},
     Method, Request, Response, StatusCode, Uri,
 };
 use http_body_util::{BodyExt, Full, LengthLimitError, Limited};
 use hyper::body::Incoming;
-use hyper_util::rt::TokioIo;
-use futures_util::StreamExt;
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::io::Cursor;
@@ -33,7 +39,15 @@ const RATE_LIMIT_MAX: u32 = 60;
 
 /// HTTP/1.x method prefixes. If the decrypted stream doesn't start with one of these, it's not HTTP.
 const HTTP_METHOD_PREFIXES: &[&[u8]] = &[
-    b"GET ", b"HEAD ", b"POST ", b"PUT ", b"DELETE ", b"CONNECT ", b"OPTIONS ", b"TRACE ", b"PATCH ",
+    b"GET ",
+    b"HEAD ",
+    b"POST ",
+    b"PUT ",
+    b"DELETE ",
+    b"CONNECT ",
+    b"OPTIONS ",
+    b"TRACE ",
+    b"PATCH ",
 ];
 
 fn looks_like_http(buf: &[u8]) -> bool {
@@ -147,9 +161,17 @@ fn is_internal_or_private(authority: &str) -> bool {
 /// Returns true if any resolved IP for the host is loopback, private, or link-local (SSRF unsafe).
 /// Uses tokio::net::lookup_host for async DNS resolution. Fails closed on resolution errors.
 async fn host_resolves_to_unsafe_ip(host_or_authority: &str) -> Result<bool> {
-    let host = host_or_authority.split(':').next().unwrap_or(host_or_authority).trim();
+    let host = host_or_authority
+        .split(':')
+        .next()
+        .unwrap_or(host_or_authority)
+        .trim();
     // Demo bypass: when AEGIS_DEMO_EVIL_PORT is set, allow 127.0.0.1 for local evil server
-    if host == "127.0.0.1" && std::env::var("AEGIS_DEMO_EVIL_PORT").map(|p| !p.is_empty()).unwrap_or(false) {
+    if host == "127.0.0.1"
+        && std::env::var("AEGIS_DEMO_EVIL_PORT")
+            .map(|p| !p.is_empty())
+            .unwrap_or(false)
+    {
         return Ok(false);
     }
     let host_lower = host.to_lowercase();
@@ -263,6 +285,15 @@ pub struct ResponseRegoInput {
     pub headers: std::collections::HashMap<String, String>,
 }
 
+/// Heartbeat entry written to trace WAL during degraded mode to maintain BLAKE3 chain continuity.
+#[derive(Debug, Clone, Serialize)]
+pub struct HeartbeatLogEntry {
+    pub timestamp_ns: i64,
+    pub action: String,
+    pub target: String,
+    pub status: String,
+}
+
 /// Sanitized trace log entry for writing to disk; omits PII (session_id, user_id, iam_role).
 #[derive(Debug, Clone, Serialize)]
 struct ProxyTraceLogEntrySanitized {
@@ -312,6 +343,8 @@ pub struct ProxyState {
     pub live_policy: Arc<RwLock<LivePolicy>>,
     /// Per-IP rate limit: (window_start, count).
     pub rate_limit: Arc<DashMap<String, (Instant, u32)>>,
+    /// When true, verifier is unreachable; proxy operates in Audit-Only mode and writes heartbeats.
+    pub degraded_mode: Arc<AtomicBool>,
 }
 
 pub struct LivePolicy {
@@ -407,7 +440,9 @@ fn response_500() -> Response<ProxyBody> {
     Response::builder()
         .status(StatusCode::INTERNAL_SERVER_ERROR)
         .header("content-type", "application/json")
-        .body(Full::new(bytes::Bytes::from(r#"{"error":"internal error"}"#)))
+        .body(Full::new(bytes::Bytes::from(
+            r#"{"error":"internal error"}"#,
+        )))
         .expect("fallback 500 response must succeed")
 }
 
@@ -434,7 +469,8 @@ fn block_response(
             .header("content-type", "application/json")
             .header("X-Aegis-Blocked", "true")
             .body(Full::new(bytes::Bytes::from(
-                serde_json::to_string(&body).unwrap_or_else(|_| r#"{"status":"error","aegis_block":true}"#.to_string()),
+                serde_json::to_string(&body)
+                    .unwrap_or_else(|_| r#"{"status":"error","aegis_block":true}"#.to_string()),
             )))
             .unwrap_or_else(|e| {
                 tracing::error!("block_response semantic body build failed: {:?}", e);
@@ -467,7 +503,9 @@ fn is_json_content_type(headers: &http::HeaderMap<HeaderValue>) -> bool {
         .unwrap_or(false)
 }
 
-fn headers_to_map(headers: &http::HeaderMap<HeaderValue>) -> std::collections::HashMap<String, String> {
+fn headers_to_map(
+    headers: &http::HeaderMap<HeaderValue>,
+) -> std::collections::HashMap<String, String> {
     let mut map = std::collections::HashMap::new();
     for (name, value) in headers.iter() {
         if let Ok(v) = value.to_str() {
@@ -487,11 +525,15 @@ fn get_identity(_headers: &http::HeaderMap<HeaderValue>) -> IdentityContext {
     }
 }
 
-fn should_block(target: &str, policy: &PolicyConfig) -> bool {
-    policy
-        .restricted_endpoints
-        .iter()
-        .any(|blocked| !blocked.is_empty() && target.contains(blocked))
+fn should_block(target_host: &str, policy: &PolicyConfig) -> bool {
+    let host_lower = target_host.to_ascii_lowercase();
+    policy.restricted_endpoints.iter().any(|blocked| {
+        if blocked.is_empty() {
+            return false;
+        }
+        let blocked_lower = blocked.to_ascii_lowercase();
+        host_lower == blocked_lower || host_lower.ends_with(&format!(".{}", blocked_lower))
+    })
 }
 
 fn classify_violation(reason: &str) -> telemetry::ViolationType {
@@ -521,17 +563,21 @@ fn check_rate_limit(state: &ProxyState, remote_addr: &SocketAddr) -> bool {
     let key = remote_addr.to_string();
     let now = Instant::now();
     let exceeded = Cell::new(false);
-    state.rate_limit.entry(key.clone()).and_modify(|(window_start, count)| {
-        if now.duration_since(*window_start) > RATE_LIMIT_WINDOW {
-            *window_start = now;
-            *count = 1;
-        } else {
-            *count = count.saturating_add(1);
-            if *count > RATE_LIMIT_MAX {
-                exceeded.set(true);
+    state
+        .rate_limit
+        .entry(key.clone())
+        .and_modify(|(window_start, count)| {
+            if now.duration_since(*window_start) > RATE_LIMIT_WINDOW {
+                *window_start = now;
+                *count = 1;
+            } else {
+                *count = count.saturating_add(1);
+                if *count > RATE_LIMIT_MAX {
+                    exceeded.set(true);
+                }
             }
-        }
-    }).or_insert((now, 1));
+        })
+        .or_insert((now, 1));
     !exceeded.get()
 }
 
@@ -582,7 +628,11 @@ pub async fn handle(
                 state.config.verifier_url.trim_end_matches('/')
             );
             let healthy = state.client.get(verifier_health).send().await;
-            if healthy.as_ref().map(|r| r.status().is_success()).unwrap_or(false) {
+            if healthy
+                .as_ref()
+                .map(|r| r.status().is_success())
+                .unwrap_or(false)
+            {
                 return Ok(response_with(StatusCode::OK, r#"{"status":"ok"}"#));
             }
             return Ok(response_with(
@@ -590,9 +640,7 @@ pub async fn handle(
                 r#"{"status":"degraded"}"#,
             ));
         }
-        if (path == "/ca" || path == "/.well-known/ca.crt")
-            && remote_addr.ip().is_loopback()
-        {
+        if (path == "/ca" || path == "/.well-known/ca.crt") && remote_addr.ip().is_loopback() {
             if let Some(ca) = state.ca_pem.as_ref() {
                 return Ok(Response::builder()
                     .status(StatusCode::OK)
@@ -625,7 +673,10 @@ pub async fn handle(
         }
     }
 
-    if method == Method::POST && req.uri().path() == "/policy/reload" && remote_addr.ip().is_loopback() {
+    if method == Method::POST
+        && req.uri().path() == "/policy/reload"
+        && remote_addr.ip().is_loopback()
+    {
         return handle_policy_reload(state).await;
     }
 
@@ -640,7 +691,10 @@ pub async fn handle(
 
     let target_uri = absolute_uri(req.uri(), req.headers())
         .context("failed to resolve absolute URI for proxy request")?;
-    let authority = target_uri.authority().map(|a| a.as_str()).unwrap_or_default();
+    let authority = target_uri
+        .authority()
+        .map(|a| a.as_str())
+        .unwrap_or_default();
     if is_internal_or_private(authority) {
         let request_id = generate_request_id();
         let target = target_uri.to_string();
@@ -707,8 +761,15 @@ pub async fn handle(
     let target_host = target_uri.host().unwrap_or_default().to_string();
     let _latency_guard = RequestLatencyGuard::new();
     telemetry::increment_request(&target_host);
-    let blocked = should_block(&target, &state.config.policy);
-    let enforce_mode = state.config.enforce_mode;
+    let blocked = should_block(&target_host, &state.config.policy);
+    let enforce_mode = if state
+        .degraded_mode
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
+        EnforceMode::AuditOnly
+    } else {
+        state.config.enforce_mode
+    };
     let request_id = generate_request_id();
     let request_span = info_span!(
         "aegis.proxy.request",
@@ -881,13 +942,18 @@ pub async fn handle(
     };
 
     if let Some(ref engine) = state.response_policy_engine {
-        let path_q = target_uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
+        let path_q = target_uri
+            .path_and_query()
+            .map(|pq| pq.as_str())
+            .unwrap_or("/");
         let response_input = ResponseRegoInput {
             method: method.as_str().to_string(),
             path: path_q.to_string(),
             host: target_host.clone(),
             status: status.as_u16(),
-            body: std::str::from_utf8(&response_body).ok().map(|v| v.to_string()),
+            body: std::str::from_utf8(&response_body)
+                .ok()
+                .map(|v| v.to_string()),
             headers: headers_to_map(&headers),
         };
         if let Ok(decision) = engine.evaluate(&response_input) {
@@ -950,7 +1016,8 @@ pub async fn handle(
 
 async fn handle_policy_reload(state: ProxyState) -> Result<Response<ProxyBody>> {
     let policy_path = std::env::var("POLICY_PATH").unwrap_or_else(|_| "policy.json".to_string());
-    let rego_path = std::env::var("POLICY_REGO_PATH").unwrap_or_else(|_| "policies/payload.rego".to_string());
+    let rego_path =
+        std::env::var("POLICY_REGO_PATH").unwrap_or_else(|_| "policies/payload.rego".to_string());
 
     let raw = match std::fs::read_to_string(&policy_path) {
         Ok(s) => s,
@@ -994,10 +1061,7 @@ async fn handle_policy_reload(state: ProxyState) -> Result<Response<ProxyBody>> 
     }
 
     info!("policy reloaded from disk");
-    Ok(response_with(
-        StatusCode::OK,
-        r#"{"status":"reloaded"}"#,
-    ))
+    Ok(response_with(StatusCode::OK, r#"{"status":"reloaded"}"#))
 }
 
 fn absolute_uri(uri: &Uri, headers: &http::HeaderMap<HeaderValue>) -> Result<Uri> {
@@ -1116,10 +1180,7 @@ async fn run_mitm_tunnel(
     let upgraded = on_upgrade.await.context("upgrade failed")?;
     let io = TokioIo::new(upgraded);
     let acceptor = TlsAcceptor::from(Arc::clone(&state.mitm_server_config));
-    let mut tls_stream = acceptor
-        .accept(io)
-        .await
-        .context("TLS handshake failed")?;
+    let mut tls_stream = acceptor.accept(io).await.context("TLS handshake failed")?;
 
     let mut peek_buf = [0u8; 8];
     let n = tls_stream
@@ -1127,7 +1188,9 @@ async fn run_mitm_tunnel(
         .await
         .context("failed to peek CONNECT tunnel")?;
     if n == 0 {
-        return Err(anyhow::anyhow!("CONNECT tunnel closed by client before data"));
+        return Err(anyhow::anyhow!(
+            "CONNECT tunnel closed by client before data"
+        ));
     }
     let peeked = peek_buf[..n].to_vec();
     if !looks_like_http(&peeked) {
@@ -1154,11 +1217,10 @@ async fn run_mitm_tunnel(
         }
     });
 
-    let conn = hyper::server::conn::http1::Builder::new()
-        .serve_connection(io, svc)
-        .with_upgrades();
+    let builder = auto::Builder::new(TokioExecutor::new());
+    let conn = builder.serve_connection_with_upgrades(io, svc);
 
-    conn.await.context("MITM connection error")?;
+    conn.await.map_err(|e| anyhow::anyhow!("MITM connection error: {e}"))?;
     Ok(())
 }
 
@@ -1177,8 +1239,16 @@ async fn handle_mitm_request(
     );
     let _request_guard = request_span.enter();
     let (parts, body) = req.into_parts();
-    let path_q = parts.uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
-    let host = authority.split(':').next().unwrap_or(&authority).to_string();
+    let path_q = parts
+        .uri
+        .path_and_query()
+        .map(|pq| pq.as_str())
+        .unwrap_or("/");
+    let host = authority
+        .split(':')
+        .next()
+        .unwrap_or(&authority)
+        .to_string();
     let _latency_guard = RequestLatencyGuard::new();
 
     telemetry::increment_request(&host);
@@ -1212,11 +1282,12 @@ async fn handle_mitm_request(
     };
     let body_bytes = collected.to_bytes();
 
-    let body_json: Option<JsonValue> = if is_json_content_type(&parts.headers) && !body_bytes.is_empty() {
-        serde_json::from_slice(&body_bytes).ok()
-    } else {
-        None
-    };
+    let body_json: Option<JsonValue> =
+        if is_json_content_type(&parts.headers) && !body_bytes.is_empty() {
+            serde_json::from_slice(&body_bytes).ok()
+        } else {
+            None
+        };
 
     let identity = get_identity(&parts.headers);
     let has_identity = identity
@@ -1229,7 +1300,9 @@ async fn handle_mitm_request(
 
     if let Some(ref registry) = state.schema_registry {
         if let Some(ref body_val) = body_json {
-            if let Err(validation_errors) = registry.validate(&host, method.as_str(), path_q, body_val) {
+            if let Err(validation_errors) =
+                registry.validate(&host, method.as_str(), path_q, body_val)
+            {
                 let reason = validation_errors.join("; ");
                 let truncated = if reason.len() > 500 {
                     format!("{}...", &reason[..497])
@@ -1274,7 +1347,12 @@ async fn handle_mitm_request(
                         truncated.clone(),
                     ),
                 );
-                return Ok(block_response(&state.config, StatusCode::BAD_REQUEST, &truncated, Some(&msg)));
+                return Ok(block_response(
+                    &state.config,
+                    StatusCode::BAD_REQUEST,
+                    &truncated,
+                    Some(&msg),
+                ));
             }
             if state.config.policy_debug {
                 debug!(
@@ -1325,8 +1403,12 @@ async fn handle_mitm_request(
         let policy_eval_started = Instant::now();
         match engine.evaluate(&rego_input) {
             Ok(decision) if !decision.allow => {
-                telemetry::observe_policy_eval_ms(policy_eval_started.elapsed().as_secs_f64() * 1000.0);
-                let reason = decision.reason.unwrap_or_else(|| "policy violation".to_string());
+                telemetry::observe_policy_eval_ms(
+                    policy_eval_started.elapsed().as_secs_f64() * 1000.0,
+                );
+                let reason = decision
+                    .reason
+                    .unwrap_or_else(|| "policy violation".to_string());
                 let violation_source = decision.violation_type.as_deref().unwrap_or(&reason);
                 telemetry::increment_blocked(&host, classify_violation(violation_source));
                 let target_url = format!("https://{authority}{path_q}");
@@ -1370,7 +1452,9 @@ async fn handle_mitm_request(
                 ));
             }
             Err(e) => {
-                telemetry::observe_policy_eval_ms(policy_eval_started.elapsed().as_secs_f64() * 1000.0);
+                telemetry::observe_policy_eval_ms(
+                    policy_eval_started.elapsed().as_secs_f64() * 1000.0,
+                );
                 if state.config.policy_debug {
                     debug!(
                         event = "policy_checkpoint",
@@ -1396,7 +1480,9 @@ async fn handle_mitm_request(
                     }));
             }
             _ => {
-                telemetry::observe_policy_eval_ms(policy_eval_started.elapsed().as_secs_f64() * 1000.0);
+                telemetry::observe_policy_eval_ms(
+                    policy_eval_started.elapsed().as_secs_f64() * 1000.0,
+                );
                 if state.config.policy_debug {
                     debug!(
                         event = "policy_checkpoint",
@@ -1435,12 +1521,19 @@ async fn handle_mitm_request(
         hasher.update(path_q.as_bytes());
         hasher.update(host.as_bytes());
         hasher.update(&body_bytes);
-        hasher.update(chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0).to_le_bytes().as_slice());
+        hasher.update(
+            chrono::Utc::now()
+                .timestamp_nanos_opt()
+                .unwrap_or(0)
+                .to_le_bytes()
+                .as_slice(),
+        );
         format!("0x{}", hasher.finalize().to_hex())
     };
     headers.insert(
         "x-aegis-trace",
-        http::HeaderValue::from_str(&trace_hash).unwrap_or_else(|_| http::HeaderValue::from_static("invalid")),
+        http::HeaderValue::from_str(&trace_hash)
+            .unwrap_or_else(|_| http::HeaderValue::from_static("invalid")),
     );
     if let Some(ref c) = identity.user_id {
         if sanitize_header_value(c) {
@@ -1604,7 +1697,9 @@ async fn handle_mitm_request(
         let policy_eval_started = Instant::now();
         match engine.evaluate(&response_input) {
             Ok(decision) if !decision.allow => {
-                telemetry::observe_policy_eval_ms(policy_eval_started.elapsed().as_secs_f64() * 1000.0);
+                telemetry::observe_policy_eval_ms(
+                    policy_eval_started.elapsed().as_secs_f64() * 1000.0,
+                );
                 let reason = decision
                     .reason
                     .unwrap_or_else(|| "response policy violation".to_string());
@@ -1655,10 +1750,17 @@ async fn handle_mitm_request(
                 } else {
                     None
                 };
-                return Ok(block_response(&state.config, deny_status, &reason, injection_override));
+                return Ok(block_response(
+                    &state.config,
+                    deny_status,
+                    &reason,
+                    injection_override,
+                ));
             }
             Err(e) => {
-                telemetry::observe_policy_eval_ms(policy_eval_started.elapsed().as_secs_f64() * 1000.0);
+                telemetry::observe_policy_eval_ms(
+                    policy_eval_started.elapsed().as_secs_f64() * 1000.0,
+                );
                 if state.config.policy_debug {
                     debug!(
                         event = "policy_checkpoint",
@@ -1684,7 +1786,9 @@ async fn handle_mitm_request(
                     }));
             }
             _ => {
-                telemetry::observe_policy_eval_ms(policy_eval_started.elapsed().as_secs_f64() * 1000.0);
+                telemetry::observe_policy_eval_ms(
+                    policy_eval_started.elapsed().as_secs_f64() * 1000.0,
+                );
                 if state.config.policy_debug {
                     debug!(
                         event = "policy_checkpoint",
@@ -1756,7 +1860,9 @@ mod tests {
         let mut headers = http::HeaderMap::new();
         insert_request_id_header(&mut headers, "abc-123");
         assert_eq!(
-            headers.get("X-Aegis-Request-Id").and_then(|v| v.to_str().ok()),
+            headers
+                .get("X-Aegis-Request-Id")
+                .and_then(|v| v.to_str().ok()),
             Some("abc-123")
         );
     }

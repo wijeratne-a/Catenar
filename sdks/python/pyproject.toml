@@ -16,6 +16,9 @@ dependencies = [
 dev = [
   "pytest>=8.0.0",
 ]
+intercept = [
+  "httpx>=0.24.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

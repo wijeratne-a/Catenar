@@ -39,7 +39,8 @@ impl TraceLogger {
             .open(&inner.path)
             .with_context(|| format!("failed to open trace log {}", inner.path.display()))?;
 
-        let payload = serde_json::to_string(value).context("failed to serialize trace log entry")?;
+        let payload =
+            serde_json::to_string(value).context("failed to serialize trace log entry")?;
         let chain_hash = compute_chain_hash(&inner.last_hash, &payload);
         inner.last_hash = chain_hash.clone();
         let line = with_chain_hash(value, &chain_hash)?;
