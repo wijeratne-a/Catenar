@@ -177,6 +177,9 @@ pub struct PotReceipt {
     pub public_key: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_summary: Option<String>,
+    /// Parent task IDs from execution_trace for swarm lineage indexing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_task_ids: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -49,9 +49,11 @@ async def run_task(client: httpx.AsyncClient, task_type: str) -> dict:
         resp = await client.get(url, timeout=10.0)
         resp.raise_for_status()
         body = resp.json() if "application/json" in resp.headers.get("content-type", "") else {"raw": resp.text[:200]}
-        # Check for 200 with semantic error body (e.g. policy violation in body)
+        # Check for 200 with semantic error body (e.g. policy violation, aegis_block)
         if resp.status_code == 200:
-            if isinstance(body, dict) and body.get("valid") is False:
+            if isinstance(body, dict) and (
+                body.get("valid") is False or body.get("aegis_block") is True
+            ):
                 return {"allowed": False, "blocked": True, "error": None, "body": body}
             return {"allowed": True, "blocked": False, "error": None, "body": body}
         return {"allowed": False, "blocked": resp.status_code in (403, 451, 502), "error": resp.text[:200], "body": body}

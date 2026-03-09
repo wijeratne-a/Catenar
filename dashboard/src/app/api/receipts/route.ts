@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth";
 import { potReceiptSchema } from "@/lib/schemas";
 import { checkReceiptIngestLimit, getTrustedIp } from "@/lib/rate-limit";
 import { createHash, timingSafeEqual } from "crypto";
-import { listReceiptsByOrg, pushReceipt } from "@/lib/receipt-store";
+import { listReceiptsByOrg, listReceiptsByParentTaskId, pushReceipt } from "@/lib/receipt-store";
 import { ensureStartupValidation } from "@/lib/startup";
 const MAX_BODY_BYTES = 64 * 1024; // 64 KB
 
@@ -160,7 +160,10 @@ export async function GET(request: NextRequest) {
   }
 
   const orgId = session.org_id || "default";
-  const filtered = listReceiptsByOrg(orgId);
+  const parentTaskId = request.nextUrl.searchParams.get("parent_task_id");
+  const filtered = parentTaskId
+    ? listReceiptsByParentTaskId(orgId, parentTaskId)
+    : listReceiptsByOrg(orgId);
 
   const limit = Math.min(
     Math.max(1, Number.parseInt(request.nextUrl.searchParams.get("limit") ?? "50", 10) || 50),

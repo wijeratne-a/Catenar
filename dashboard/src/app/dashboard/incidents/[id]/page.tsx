@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +27,7 @@ export default function IncidentDetailPage() {
   const router = useRouter();
   const incidentId = typeof params.id === "string" ? params.id : null;
 
-  const { data: alert, isLoading, isError } = useIncident(incidentId);
+  const { data: incident, isLoading, isError } = useIncident(incidentId);
 
   if (!incidentId) {
     return (
@@ -62,7 +62,7 @@ export default function IncidentDetailPage() {
     );
   }
 
-  if (isError || !alert) {
+  if (isError || !incident) {
     return (
       <div>
         <h1 className="text-2xl font-bold">Incident Not Found</h1>
@@ -80,17 +80,17 @@ export default function IncidentDetailPage() {
   }
 
   const handleMarkResolved = () => {
-    alert("Demo: Incident marked as resolved. In production, this would update the SOC ticket.");
+    window.alert("Demo: Incident marked as resolved. In production, this would update the SOC ticket.");
   };
 
   const handleExportToSOC = () => {
     const exportData = {
-      incident_id: alert.incident_id,
-      event: alert.event,
-      domain: alert.domain,
-      reason: alert.reason,
-      policy_commitment: alert.policy_commitment,
-      received_at: alert.received_at,
+      incident_id: incident.incident_id,
+      event: incident.event,
+      domain: incident.domain,
+      reason: incident.reason,
+      policy_commitment: incident.policy_commitment,
+      received_at: incident.received_at,
     };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], {
       type: "application/json",
@@ -98,34 +98,34 @@ export default function IncidentDetailPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `aegis-incident-${alert.incident_id}.json`;
+    a.download = `aegis-incident-${incident.incident_id}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const handleCopyIncidentId = () => {
-    void navigator.clipboard.writeText(alert.incident_id ?? "");
-    alert("Demo: Incident ID copied to clipboard.");
+    void navigator.clipboard.writeText(incident.incident_id ?? "");
+    window.alert("Demo: Incident ID copied to clipboard.");
   };
 
   const handleQuarantineAgent = () => {
-    alert("Demo: Agent quarantine requested. In production, this would revoke the agent certificate.");
+    window.alert("Demo: Agent quarantine requested. In production, this would revoke the agent certificate.");
   };
 
   const handleEscalateToSOC = () => {
     const incidentUrl = window.location.href;
     void navigator.clipboard.writeText(incidentUrl);
-    alert("Demo: Incident URL copied to clipboard. Ready to paste into SOC ticket.");
+    window.alert("Demo: Incident URL copied to clipboard. Ready to paste into SOC ticket.");
   };
 
   const policyLabel =
-    alert.reason?.toLowerCase().includes("instruction") ||
-    alert.reason?.toLowerCase().includes("injection")
+    incident.reason?.toLowerCase().includes("instruction") ||
+    incident.reason?.toLowerCase().includes("injection")
       ? "Response injection"
-      : alert.reason?.toLowerCase().includes("restricted") ||
-        alert.reason?.toLowerCase().includes("endpoint")
+      : incident.reason?.toLowerCase().includes("restricted") ||
+        incident.reason?.toLowerCase().includes("endpoint")
         ? "Restricted endpoint"
-        : alert.reason ?? "Policy violation";
+        : incident.reason ?? "Policy violation";
 
   return (
     <div>
@@ -140,7 +140,7 @@ export default function IncidentDetailPage() {
 
       <h1 className="text-2xl font-bold">Incident Details</h1>
       <p className="mt-2 text-muted-foreground">
-        Full forensic context for incident {sanitizeForDisplay(alert.incident_id)}. Use this view to investigate and
+        Full forensic context for incident {sanitizeForDisplay(incident.incident_id)}. Use this view to investigate and
         remediate policy violations.
       </p>
 
@@ -148,7 +148,7 @@ export default function IncidentDetailPage() {
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="font-mono">
-              {alert.incident_id}
+              {incident.incident_id}
             </Badge>
             <Button
               variant="ghost"
@@ -159,40 +159,40 @@ export default function IncidentDetailPage() {
             >
               <Copy className="h-3.5 w-3.5" />
             </Button>
-            <Badge className={severityColor(alert.severity as ViolationSeverity)}>
-              {alert.severity}
+            <Badge className={severityColor(incident.severity as ViolationSeverity)}>
+              {incident.severity}
             </Badge>
           </CardTitle>
           <CardDescription>
-            Detected {formatTime(alert.received_at)}
+            Detected {formatTime(incident.received_at)}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reason</span>
-            <p className="mt-1 font-mono text-sm">{sanitizeForDisplay(alert.reason)}</p>
+            <p className="mt-1 font-mono text-sm">{sanitizeForDisplay(incident.reason)}</p>
           </div>
           <div>
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Domain</span>
-            <p className="mt-1 font-mono text-sm">{sanitizeForDisplay(alert.domain)}</p>
+            <p className="mt-1 font-mono text-sm">{sanitizeForDisplay(incident.domain)}</p>
           </div>
           <div>
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Event</span>
-            <p className="mt-1 font-mono text-sm">{sanitizeForDisplay(alert.event)}</p>
+            <p className="mt-1 font-mono text-sm">{sanitizeForDisplay(incident.event)}</p>
           </div>
           <div>
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Policy Commitment
             </span>
             <pre className="mt-1 break-all rounded bg-muted/50 p-2 font-mono text-xs">
-              {sanitizeForDisplay(alert.policy_commitment)}
+              {sanitizeForDisplay(incident.policy_commitment)}
             </pre>
           </div>
           <div>
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Timestamp (ns)
             </span>
-            <p className="mt-1 font-mono text-sm">{alert.timestamp_ns}</p>
+            <p className="mt-1 font-mono text-sm">{incident.timestamp_ns}</p>
           </div>
         </CardContent>
       </Card>
@@ -214,7 +214,7 @@ export default function IncidentDetailPage() {
               Evidence
             </span>
             <p className="mt-1 text-sm">
-              Blocked request to {sanitizeForDisplay(alert.domain)} at {formatTime(alert.received_at)}.
+              Blocked request to {sanitizeForDisplay(incident.domain)} at {formatTime(incident.received_at)}.
             </p>
           </div>
         </CardContent>

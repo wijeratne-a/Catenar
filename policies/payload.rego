@@ -5,6 +5,7 @@ package aegis.payload
 default allow = true
 default reason = ""
 default violation_type = ""
+default suggestion = ""
 
 # Identity fields in payload policy are currently advisory only.
 # Authoritative identity/task binding is enforced by verifier task tokens.
@@ -28,6 +29,12 @@ violation_type = "sensitive_data_exposure" {
   body.text != null
   regex.match("[0-9]{3}-[0-9]{2}-[0-9]{4}", body.text)
 }
+suggestion = "Remove or redact SSN-like patterns from the request body before sending" {
+  body := input.body
+  body != null
+  body.text != null
+  regex.match("[0-9]{3}-[0-9]{2}-[0-9]{4}", body.text)
+}
 
 # A2A: when x-aegis-caller is present (agent-to-agent), require x-aegis-trace for audit chain.
 allow = false {
@@ -45,6 +52,13 @@ reason = "A2A call requires x-aegis-trace header" {
   trace == null
 }
 violation_type = "missing_audit_trace" {
+  caller := input.headers["x-aegis-caller"]
+  caller != null
+  caller != ""
+  trace := input.headers["x-aegis-trace"]
+  trace == null
+}
+suggestion = "Add x-aegis-trace header with the parent trace when making agent-to-agent calls" {
   caller := input.headers["x-aegis-caller"]
   caller != null
   caller != ""

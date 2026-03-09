@@ -131,9 +131,9 @@ fn parse_and_validate_task_token(secret: &str, token: &str) -> Result<AgentTaskT
     }
 
     let expected_sig = sign_task_token_hex(secret, payload_b64)?;
-    let a = expected_sig.as_bytes();
-    let b = signature.as_bytes();
-    if a.len() != b.len() || !constant_time_eq(a, b) {
+    let a_hash = blake3::hash(expected_sig.as_bytes());
+    let b_hash = blake3::hash(signature.as_bytes());
+    if !constant_time_eq(a_hash.as_bytes(), b_hash.as_bytes()) {
         bail!("invalid task token signature");
     }
 
@@ -280,6 +280,21 @@ pub async fn verify_trace(
         .find_map(|e| e.reasoning_summary.as_deref())
         .map(|s| s.to_string());
 
+    let parent_task_ids: Vec<String> = request
+        .execution_trace
+        .iter()
+        .filter_map(|e| e.parent_task_id.as_ref())
+        .cloned()
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .take(64)
+        .collect::<Vec<_>>();
+    let parent_task_ids = if parent_task_ids.is_empty() {
+        None
+    } else {
+        Some(parent_task_ids)
+    };
+
     let proof = PotReceipt {
         receipt_id,
         policy_commitment: request.policy_commitment.clone(),
@@ -291,6 +306,7 @@ pub async fn verify_trace(
         signature: hex_encode(&signature),
         public_key: hex_encode(&key_provider.public_key_bytes()),
         reasoning_summary,
+        parent_task_ids,
     };
 
     info!(

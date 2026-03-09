@@ -69,10 +69,21 @@ _DEFAULT_VERIFIER = "http://127.0.0.1:3000"
 
 
 def _configure_proxy_env() -> None:
-    """Ensure HTTP_PROXY, HTTPS_PROXY and REQUESTS_CA_BUNDLE are set."""
+    """Ensure HTTP_PROXY, HTTPS_PROXY, NO_PROXY, and REQUESTS_CA_BUNDLE are set."""
     os.environ.setdefault("HTTP_PROXY", _DEFAULT_PROXY)
     os.environ.setdefault("HTTPS_PROXY", _DEFAULT_PROXY)
-    os.environ.setdefault("REQUESTS_CA_BUNDLE", _DEFAULT_CA_BUNDLE)
+    no_proxy = os.environ.get("NO_PROXY", "") or os.environ.get("no_proxy", "")
+    if "127.0.0.1" not in no_proxy and "localhost" not in no_proxy:
+        os.environ["NO_PROXY"] = "127.0.0.1,localhost" + (f",{no_proxy}" if no_proxy else "")
+    if "REQUESTS_CA_BUNDLE" not in os.environ and "SSL_CERT_FILE" not in os.environ:
+        # Prefer deploy/certs (Docker) over /etc/aegis
+        from pathlib import Path
+        deploy_ca = Path(__file__).resolve().parent.parent / "deploy" / "certs" / "ca.crt"
+        if deploy_ca.exists():
+            os.environ["REQUESTS_CA_BUNDLE"] = str(deploy_ca)
+            os.environ["SSL_CERT_FILE"] = str(deploy_ca)
+        else:
+            os.environ.setdefault("REQUESTS_CA_BUNDLE", _DEFAULT_CA_BUNDLE)
 
 
 # ---------------------------------------------------------------------------

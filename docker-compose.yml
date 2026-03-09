@@ -28,6 +28,12 @@ services:
       SEMANTIC_DENY: "true"
       METRICS_ENABLED: "true"
       AEGIS_DEMO_EVIL_PORT: "19999"
+      AEGIS_CA_PATH: /app/ca/ca.crt
+    volumes:
+      - ./deploy/certs:/app/ca
+      - ./policies:/app/policies
+      - ./policy.json:/app/policy.json
+      - ./data:/app/data
     depends_on:
       verifier:
         condition: service_healthy
@@ -80,7 +86,7 @@ services:
       - "3002:3000"
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-changeme-admin-demo-only}
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning

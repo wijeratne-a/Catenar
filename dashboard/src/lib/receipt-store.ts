@@ -7,6 +7,7 @@ export type StoredReceipt = {
 };
 
 const receipts: StoredReceipt[] = [];
+/** Max receipts held in memory. Older entries are dropped. Restart loses all data. */
 const MAX_RECEIPTS = 1000;
 
 export function pushReceipt(orgId: string, value: unknown): void {
@@ -22,6 +23,18 @@ export function pushReceipt(orgId: string, value: unknown): void {
 
 export function listReceiptsByOrg(orgId: string): StoredReceipt[] {
   return receipts.filter((r) => r.org_id === orgId);
+}
+
+function hasParentTaskId(value: unknown, parentTaskId: string): boolean {
+  if (!value || typeof value !== "object") return false;
+  const ids = (value as Record<string, unknown>).parent_task_ids;
+  return Array.isArray(ids) && ids.includes(parentTaskId);
+}
+
+export function listReceiptsByParentTaskId(orgId: string, parentTaskId: string): StoredReceipt[] {
+  return receipts.filter(
+    (r) => r.org_id === orgId && hasParentTaskId(r.value, parentTaskId)
+  );
 }
 
 function normalizeForHash(payload: unknown): string {

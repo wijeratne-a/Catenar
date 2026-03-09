@@ -103,11 +103,11 @@ otelCollector:
     create: true
     name: otel-collector-config
   env:
-    siemOtlpHttpEndpoint: https://siem.example.com/v1/otlp
+    siemOtlpHttpEndpoint: ""
     siemOtlpHttpToken: ""
-    splunkHecEndpoint: https://splunk.example.com:8088/services/collector
+    splunkHecEndpoint: ""
     splunkHecToken: ""
-    lokiEndpoint: https://loki.example.com/loki/api/v1/push
+    lokiEndpoint: ""
   config: |
     receivers:
       otlp:

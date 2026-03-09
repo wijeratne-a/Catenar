@@ -23,6 +23,7 @@ pub struct PayloadDecision {
     pub allow: bool,
     pub reason: Option<String>,
     pub violation_type: Option<String>,
+    pub suggestion: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -64,6 +65,7 @@ impl PayloadPolicyEngine {
                 allow: true,
                 reason: None,
                 violation_type: None,
+                suggestion: None,
             });
         }
 
@@ -79,11 +81,18 @@ impl PayloadPolicyEngine {
             .and_then(|results| results.result.first().cloned())
             .and_then(|row| row.expressions.first().cloned())
             .and_then(|expr| expr.value.as_string().ok().map(|s| s.to_string()));
+        let suggestion = engine
+            .eval_query("data.aegis.payload.suggestion".to_string(), false)
+            .ok()
+            .and_then(|results| results.result.first().cloned())
+            .and_then(|row| row.expressions.first().cloned())
+            .and_then(|expr| expr.value.as_string().ok().map(|s| s.to_string()));
 
         Ok(PayloadDecision {
             allow: false,
             reason: reason.or(Some("payload policy denied request".to_string())),
             violation_type,
+            suggestion,
         })
     }
 }

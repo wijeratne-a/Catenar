@@ -47,6 +47,7 @@ export const potReceiptSchema = z.object({
   timestamp_ns: z.number(),
   signature: z.string(),
   public_key: z.string(),
+  parent_task_ids: z.array(z.string()).optional(),
 });
 
 export const verifyResponseSchema = z.object({

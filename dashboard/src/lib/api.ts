@@ -76,6 +76,7 @@ export function useAgents() {
 type AlertListResponse = {
   alerts: Array<{
     id: string;
+    incident_id?: string;
     event: string;
     policy_commitment: string;
     domain: string;

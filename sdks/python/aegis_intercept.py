@@ -1,9 +1,9 @@
 """
 Zero-config monkey-patch module for Aegis Proof-of-Task tracing.
 
-Patches requests.Session.request, httpx.Client.send, httpx.AsyncClient.send
-to emit trace entries via the Aegis tracer. Import this module before any
-HTTP client to enable automatic tracing.
+Patches requests.Session.request, httpx.Client.send, httpx.AsyncClient.send,
+and aiohttp.ClientSession.request to emit trace entries via the Aegis tracer.
+Import this module before any HTTP client to enable automatic tracing.
 
 Set HTTP_PROXY/HTTPS_PROXY (default http://127.0.0.1:8080) for proxy routing.
 """
@@ -189,10 +189,56 @@ def _patch_httpx() -> None:
     httpx.AsyncClient.send = _patched_async_send
 
 
+def _patch_aiohttp() -> None:
+    """Patch aiohttp.ClientSession.request (lazy import)."""
+    try:
+        import aiohttp
+    except ImportError:
+        return
+
+    _original_request = aiohttp.ClientSession.request
+
+    async def _patched_request(
+        self: Any,
+        method: str,
+        url: Any,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        start = time.perf_counter()
+        status_code: Optional[int] = None
+        error_msg: Optional[str] = None
+        url_str = str(url) if url is not None else ""
+        try:
+            resp = await _original_request(self, method, url, *args, **kwargs)
+            status_code = resp.status
+            return resp
+        except Exception as e:
+            error_msg = str(e)
+            raise
+        finally:
+            elapsed_ms = (time.perf_counter() - start) * 1000.0
+            try:
+                aegis = _get_aegis()
+                entry = _build_http_trace_entry(
+                    method.upper() if isinstance(method, str) else str(method),
+                    url_str,
+                    status_code,
+                    elapsed_ms,
+                    error_msg,
+                )
+                aegis._append_trace(entry)
+            except Exception:
+                pass
+
+    aiohttp.ClientSession.request = _patched_request
+
+
 def install() -> None:
     """Install all patches. Called automatically on import."""
     _patch_requests()
     _patch_httpx()
+    _patch_aiohttp()
 
 
 # Auto-install on import

@@ -61,7 +61,7 @@ See [docs/demo/getting-started.md](docs/demo/getting-started.md) for full demo i
 | Tool | Command | Description |
 |------|---------|-------------|
 | Debug Watch | `make debug` or `cargo run --manifest-path dev/cli/Cargo.toml -- debug watch` | Tail proxy trace WAL and show policy decisions, BLAKE3 hashes in real time |
-| Chain Verify | `make verify` or `cargo run --manifest-path tools/aegis-verify/Cargo.toml -- ./data/proxy-trace.jsonl` | Verify BLAKE3 hash chain of the proxy's WAL (not the SDK's `aegis-trace-wal.jsonl`) |
+| Chain Verify | `make verify` or `cargo run --manifest-path tools/aegis-verify/Cargo.toml -- ./data/proxy-trace.jsonl` | Verify BLAKE3 hash chain. Run against proxy WAL (`./data/proxy-trace.jsonl`), not SDK WAL (`aegis-trace-wal.jsonl`). |
 
 ## Examples
 
@@ -69,7 +69,7 @@ See [docs/demo/getting-started.md](docs/demo/getting-started.md) for full demo i
 
 ## Open Core
 
-**Aegis Community Edition** is open source under the [Apache 2.0 License](LICENSE). Enterprise features (RBAC, advanced audit, SOC2 compliance) are planned and available under commercial license. Contact for licensing.
+**Aegis Community Edition** is open source under the [Apache 2.0 License](LICENSE). See [docs/OPEN_CORE.md](docs/OPEN_CORE.md) for supported key providers (local, env) and what is available in Aegis Enterprise (KMS, Vault, Redis, SIEM).
 
 ## Documentation
 

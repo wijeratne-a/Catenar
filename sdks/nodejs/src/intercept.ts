@@ -143,6 +143,58 @@ function patchHttps(): void {
   (https as Record<string, unknown>).request = wrapRequest(origHttpsRequest, "https");
 }
 
+function patchFetch(): void {
+  const originalFetch = globalThis.fetch;
+  if (!originalFetch) return;
+
+  const patchedFetch = function (
+    input: string | URL | { url: string },
+    init?: Record<string, unknown>
+  ): Promise<Response> {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as { url: string }).url;
+    const method = ((init?.method as string) ?? "GET").toUpperCase();
+    const start = Date.now();
+
+    return (originalFetch as (input: unknown, init?: unknown) => Promise<Response>)(input, init).then(
+      (res) => {
+        const statusCode = res.status;
+        const elapsedMs = Date.now() - start;
+        try {
+          getAegis().trace("api_call", url, {
+            details: {
+              method,
+              url,
+              status_code: statusCode,
+              execution_ms: elapsedMs,
+            },
+          });
+        } catch {
+          // ignore
+        }
+        return res;
+      },
+      (err) => {
+        const elapsedMs = Date.now() - start;
+        try {
+          getAegis().trace("api_call", url, {
+            details: {
+              method,
+              url,
+              status_code: null,
+              execution_ms: elapsedMs,
+              error: err?.message ?? "request failed",
+            },
+          });
+        } catch {
+          // ignore
+        }
+        throw err;
+      }
+    );
+  };
+  (globalThis as Record<string, unknown>).fetch = patchedFetch;
+}
+
 function patchAxios(): void {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -213,6 +265,7 @@ function patchAxios(): void {
 export function install(): void {
   patchHttp();
   patchHttps();
+  patchFetch();
   patchAxios();
 }
 

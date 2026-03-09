@@ -33,6 +33,12 @@ Aegis is a Zero Trust Network Access (ZTNA) layer for AI agents. It sits between
 5. On allow: forwards request; buffers response; evaluates `policies/response.rego` (bidirectional defense).
 6. Verifier signs receipt (BLAKE3 chain + Ed25519); webhook notifies dashboard.
 
+## Receipt Generation Semantics
+
+- Receipt generation is **best-effort**. If the verifier or proxy crashes after a request is forwarded but before a receipt is produced, that receipt is lost.
+- The proxy trace WAL maintains BLAKE3 chain integrity across restarts; the verifier does not replay the WAL.
+- Duplicate verify requests produce new receipts; there is no idempotency key. Future versions may add idempotency for critical audit use cases.
+
 ## Deployment
 
 - **Docker Compose**: Single-command local stack (verifier, proxy, dashboard, Prometheus, Grafana, OTel collector).

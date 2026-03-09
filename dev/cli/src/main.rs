@@ -36,6 +36,10 @@ enum DebugCommands {
         /// Path to the trace WAL file
         #[arg(long, default_value = "./data/proxy-trace.jsonl")]
         trace_wal: PathBuf,
+
+        /// Print full chain_hash instead of truncated
+        #[arg(long)]
+        full_hash: bool,
     },
 }
 
@@ -45,14 +49,18 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Debug {
-            command: DebugCommands::Watch { proxy: _, trace_wal },
-        } => run_watch(trace_wal).await?,
+            command: DebugCommands::Watch {
+                proxy: _,
+                trace_wal,
+                full_hash,
+            },
+        } => run_watch(trace_wal, full_hash).await?,
     }
 
     Ok(())
 }
 
-async fn run_watch(trace_wal: PathBuf) -> Result<()> {
+async fn run_watch(trace_wal: PathBuf, full_hash: bool) -> Result<()> {
     loop {
         match File::open(&trace_wal).await {
             Ok(file) => {
@@ -65,7 +73,7 @@ async fn run_watch(trace_wal: PathBuf) -> Result<()> {
                         _ = signal::ctrl_c() => {
                             return Ok(());
                         }
-                        result = read_and_process_line(&mut reader) => {
+                        result = read_and_process_line(&mut reader, full_hash) => {
                             match result {
                                 Ok(Some(())) => {}
                                 Ok(None) => {
@@ -90,6 +98,7 @@ async fn run_watch(trace_wal: PathBuf) -> Result<()> {
 
 async fn read_and_process_line(
     reader: &mut BufReader<File>,
+    full_hash: bool,
 ) -> Result<Option<()>> {
     let mut line = String::new();
     let n = reader.read_line(&mut line).await?;
@@ -108,8 +117,13 @@ async fn read_and_process_line(
     };
 
     let timestamp = v
-        .get("timestamp")
-        .and_then(|t| t.as_str())
+        .get("timestamp_ns")
+        .and_then(|t| t.as_i64())
+        .map(|ns| format!("{}", ns / 1_000_000_000))
+        .unwrap_or_else(|| "-".to_string());
+    let request_id = v
+        .get("request_id")
+        .and_then(|r| r.as_str())
         .unwrap_or("-");
     let method = v
         .get("method")
@@ -132,15 +146,17 @@ async fn read_and_process_line(
         .get("chain_hash")
         .and_then(|h| h.as_str())
         .unwrap_or("-");
-    let chain_hash_truncated = if chain_hash != "-" && chain_hash.len() > 12 {
-        &chain_hash[..12]
+    let chain_hash_display = if full_hash || chain_hash == "-" {
+        chain_hash.to_string()
+    } else if chain_hash.len() > 12 {
+        format!("{}...", &chain_hash[..12])
     } else {
-        chain_hash
+        chain_hash.to_string()
     };
 
     println!(
-        "{} | {} | {} | blocked={} | enforcement={} | chain_hash={}",
-        timestamp, method, target, blocked, enforcement, chain_hash_truncated
+        "{} | {} | {} | {} | blocked={} | enforcement={} | chain_hash={}",
+        timestamp, request_id, method, target, blocked, enforcement, chain_hash_display
     );
 
     Ok(Some(()))

@@ -59,6 +59,18 @@ fn looks_like_http(buf: &[u8]) -> bool {
         .any(|prefix| buf.len() >= prefix.len() && buf.starts_with(prefix))
 }
 
+/// Detects WebSocket upgrade request (HTTP GET with Upgrade: websocket in headers).
+fn looks_like_websocket_upgrade(buf: &[u8]) -> bool {
+    if buf.len() < 20 {
+        return false;
+    }
+    let s = match std::str::from_utf8(buf) {
+        Ok(x) => x.to_lowercase(),
+        Err(_) => return false,
+    };
+    s.contains("upgrade:") && s.contains("websocket")
+}
+
 /// Wraps a stream to prepend bytes for read while forwarding writes. Used after HTTP protocol peek.
 struct PrependReader<R> {
     prepended: Option<Cursor<Vec<u8>>>,
@@ -453,17 +465,21 @@ fn block_response(
     status_when_strict: StatusCode,
     reason: &str,
     message_override: Option<&str>,
+    suggestion: Option<&str>,
 ) -> Response<ProxyBody> {
     let message: String = message_override
         .map(String::from)
         .unwrap_or_else(|| format!("AEGIS SECURITY BLOCK: {}. Do not retry.", reason));
     if config.semantic_deny {
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "status": "error",
             "aegis_block": true,
             "message": message,
             "reason": reason
         });
+        if let Some(s) = suggestion {
+            body["suggestion"] = serde_json::json!(s);
+        }
         Response::builder()
             .status(StatusCode::OK)
             .header("content-type", "application/json")
@@ -592,6 +608,7 @@ pub async fn handle(
             StatusCode::TOO_MANY_REQUESTS,
             "rate limit exceeded",
             Some("Aegis Security Block: Rate limit exceeded. Do not retry."),
+            None,
         ));
     }
 
@@ -724,6 +741,7 @@ pub async fn handle(
             StatusCode::FORBIDDEN,
             "forwarding to internal or private targets is forbidden",
             None,
+            None,
         ));
     }
     if host_resolves_to_unsafe_ip(authority).await.unwrap_or(true) {
@@ -754,6 +772,7 @@ pub async fn handle(
             &state.config,
             StatusCode::FORBIDDEN,
             "forwarding to internal or private targets is forbidden",
+            None,
             None,
         ));
     }
@@ -828,6 +847,7 @@ pub async fn handle(
             StatusCode::BAD_GATEWAY,
             "blocked by policy in strict mode",
             None,
+            None,
         ));
     }
     if blocked {
@@ -857,6 +877,7 @@ pub async fn handle(
                     StatusCode::PAYLOAD_TOO_LARGE,
                     "request body exceeds 5MB limit",
                     Some("Aegis Security Block: Payload too large. Reduce request body size. Do not retry."),
+                    None,
                 ));
             }
             return Err(anyhow::anyhow!("body collection failed: {}", e));
@@ -893,6 +914,7 @@ pub async fn handle(
                     StatusCode::GATEWAY_TIMEOUT,
                     "upstream timeout",
                     Some("Aegis: Upstream request timed out. Do not retry."),
+                    None,
                 ));
             }
             error!("proxy forward failed: {err}");
@@ -935,6 +957,7 @@ pub async fn handle(
                     StatusCode::GATEWAY_TIMEOUT,
                     "upstream timeout",
                     Some("Aegis: Upstream request timed out. Do not retry."),
+                    None,
                 ));
             }
             return Err(err.into());
@@ -992,6 +1015,7 @@ pub async fn handle(
                     StatusCode::BAD_GATEWAY,
                     &reason,
                     injection_override,
+                    None,
                 ));
             }
         }
@@ -1120,6 +1144,7 @@ async fn handle_connect(
             StatusCode::FORBIDDEN,
             "CONNECT to internal targets forbidden",
             None,
+            None,
         ));
     }
     let host = authority.split(':').next().unwrap_or(&authority);
@@ -1152,6 +1177,7 @@ async fn handle_connect(
             StatusCode::FORBIDDEN,
             "CONNECT to internal targets forbidden",
             None,
+            None,
         ));
     }
     info!(target = authority, remote = %remote_addr, "connect tunnel requested");
@@ -1182,7 +1208,7 @@ async fn run_mitm_tunnel(
     let acceptor = TlsAcceptor::from(Arc::clone(&state.mitm_server_config));
     let mut tls_stream = acceptor.accept(io).await.context("TLS handshake failed")?;
 
-    let mut peek_buf = [0u8; 8];
+    let mut peek_buf = [0u8; 1024];
     let n = tls_stream
         .read(&mut peek_buf)
         .await
@@ -1193,9 +1219,13 @@ async fn run_mitm_tunnel(
         ));
     }
     let peeked = peek_buf[..n].to_vec();
-    if !looks_like_http(&peeked) {
+    let is_websocket = looks_like_websocket_upgrade(&peeked);
+    if is_websocket {
+        info!(authority = %authority, "WebSocket upgrade detected; tunneling post-handshake");
+    }
+    if !looks_like_http(&peeked) && !is_websocket {
         return Err(anyhow::anyhow!(
-            "Non-HTTP protocol detected on CONNECT tunnel to {}; Aegis V1 supports HTTP/HTTPS only",
+            "Non-HTTP/1.1 protocol detected on CONNECT tunnel to {}; Aegis V1 supports HTTP/1.1 only (HTTP/2 not supported)",
             authority
         ));
     }
@@ -1275,6 +1305,7 @@ async fn handle_mitm_request(
                     StatusCode::PAYLOAD_TOO_LARGE,
                     "request body exceeds 5MB limit",
                     Some("Aegis Security Block: Payload too large. Reduce request body size. Do not retry."),
+                    None,
                 ));
             }
             return Err(e);
@@ -1352,6 +1383,7 @@ async fn handle_mitm_request(
                     StatusCode::BAD_REQUEST,
                     &truncated,
                     Some(&msg),
+                    None,
                 ));
             }
             if state.config.policy_debug {
@@ -1449,6 +1481,7 @@ async fn handle_mitm_request(
                     StatusCode::FORBIDDEN,
                     &reason,
                     None,
+                    decision.suggestion.as_deref(),
                 ));
             }
             Err(e) => {
@@ -1577,6 +1610,7 @@ async fn handle_mitm_request(
             StatusCode::FORBIDDEN,
             "forwarding to internal or private targets is forbidden",
             None,
+            None,
         ));
     }
 
@@ -1617,6 +1651,7 @@ async fn handle_mitm_request(
                     StatusCode::GATEWAY_TIMEOUT,
                     "upstream timeout",
                     Some("Aegis: Upstream request timed out. Do not retry."),
+                    None,
                 ));
             }
             return Err(err.into());
@@ -1631,6 +1666,7 @@ async fn handle_mitm_request(
             StatusCode::BAD_GATEWAY,
             "upstream response too large",
             Some("Aegis: Upstream response exceeds size limit. Do not retry."),
+            None,
         ));
     }
     let mut body_stream = upstream_res.bytes_stream();
@@ -1667,6 +1703,7 @@ async fn handle_mitm_request(
                         StatusCode::GATEWAY_TIMEOUT,
                         "upstream timeout",
                         Some("Aegis: Upstream request timed out. Do not retry."),
+                        None,
                     ));
                 }
                 return Err(err.into());
@@ -1679,6 +1716,7 @@ async fn handle_mitm_request(
                 StatusCode::BAD_GATEWAY,
                 "upstream response too large",
                 Some("Aegis: Upstream response exceeds size limit. Do not retry."),
+                None,
             ));
         }
         body_buf.extend_from_slice(&chunk);
@@ -1755,6 +1793,7 @@ async fn handle_mitm_request(
                     deny_status,
                     &reason,
                     injection_override,
+                    None,
                 ));
             }
             Err(e) => {

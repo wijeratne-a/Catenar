@@ -95,6 +95,9 @@ fn read_policy(path: &str) -> Result<PolicyConfig> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("failed to install rustls crypto provider");
     telemetry::init_telemetry()?;
 
     let policy_path = std::env::var("POLICY_PATH").unwrap_or_else(|_| "policy.json".to_string());
