@@ -36,6 +36,7 @@ use crate::webhook::{self, WebhookEvent};
 
 const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
 const RATE_LIMIT_MAX: u32 = 60;
+const POLICY_EVAL_TIMEOUT_MS: u64 = 500;
 
 /// HTTP/1.x method prefixes. If the decrypted stream doesn't start with one of these, it's not HTTP.
 const HTTP_METHOD_PREFIXES: &[&[u8]] = &[
@@ -321,6 +322,9 @@ const MAX_BODY_BYTES: usize = 5 * 1024 * 1024;
 
 /// Max HTTP response body size (10 MB) when relaying from upstream.
 const MAX_RESPONSE_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Max policy POST body size (256 KB) for policy management.
+const MAX_POLICY_BODY_BYTES: usize = 256 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct IdentityContext {
@@ -769,8 +773,19 @@ pub async fn handle(
     req.headers_mut().remove("x-catenar-user-id");
     req.headers_mut().remove("x-catenar-iam-role");
 
-    let target_uri = absolute_uri(req.uri(), req.headers())
-        .context("failed to resolve absolute URI for proxy request")?;
+    let target_uri = match absolute_uri(req.uri(), req.headers()) {
+        Ok(u) => u,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("invalid host header") {
+                return Ok(response_with(
+                    StatusCode::BAD_REQUEST,
+                    r#"{"error":"invalid host header"}"#,
+                ));
+            }
+            return Err(e.context("failed to resolve absolute URI for proxy request"));
+        }
+    };
     let authority = target_uri
         .authority()
         .map(|a| a.as_str())
@@ -1009,32 +1024,50 @@ pub async fn handle(
     for (name, value) in &headers {
         resp_builder = resp_builder.header(name.as_str(), value.clone());
     }
-    let response_body = match upstream.bytes().await {
-        Ok(b) => b,
-        Err(err) => {
-            if err.is_timeout() {
-                telemetry::increment_timeout(&target_host);
-                emit_webhook_event(
-                    &state,
-                    WebhookEvent::new(
-                        "upstream_timeout",
-                        request_id.clone(),
-                        method.as_str(),
-                        target.clone(),
+    // Stream response body with size limit to prevent OOM (chunked/unbounded responses)
+    let mut body_stream = upstream.bytes_stream();
+    let mut total: u64 = 0;
+    let mut body_buf = bytes::BytesMut::new();
+    while let Some(chunk_res) = body_stream.next().await {
+        let chunk = match chunk_res {
+            Ok(c) => c,
+            Err(err) => {
+                if err.is_timeout() {
+                    telemetry::increment_timeout(&target_host);
+                    emit_webhook_event(
+                        &state,
+                        WebhookEvent::new(
+                            "upstream_timeout",
+                            request_id.clone(),
+                            method.as_str(),
+                            target.clone(),
+                            "upstream timeout",
+                        ),
+                    );
+                    return Ok(block_response(
+                        &state.config,
+                        StatusCode::GATEWAY_TIMEOUT,
                         "upstream timeout",
-                    ),
-                );
-                return Ok(block_response(
-                    &state.config,
-                    StatusCode::GATEWAY_TIMEOUT,
-                    "upstream timeout",
-                    Some("Catenar: Upstream request timed out. Do not retry."),
-                    None,
-                ));
+                        Some("Catenar: Upstream request timed out. Do not retry."),
+                        None,
+                    ));
+                }
+                return Err(err.into());
             }
-            return Err(err.into());
+        };
+        total += chunk.len() as u64;
+        if total > MAX_RESPONSE_BYTES {
+            return Ok(block_response(
+                &state.config,
+                StatusCode::BAD_GATEWAY,
+                "upstream response too large",
+                Some("Catenar: Upstream response exceeds size limit. Do not retry."),
+                None,
+            ));
         }
-    };
+        body_buf.extend_from_slice(&chunk);
+    }
+    let response_body = body_buf.freeze();
 
     if let Some(ref engine) = state.response_policy_engine {
         let path_q = target_uri
@@ -1051,7 +1084,42 @@ pub async fn handle(
                 .map(|v| v.to_string()),
             headers: headers_to_map(&headers),
         };
-        if let Ok(decision) = engine.evaluate(&response_input) {
+        let engine = Arc::clone(engine);
+        let eval_result = tokio::time::timeout(
+            Duration::from_millis(POLICY_EVAL_TIMEOUT_MS),
+            tokio::task::spawn_blocking(move || engine.evaluate(&response_input)),
+        )
+        .await;
+        let policy_result = match eval_result {
+            Ok(Ok(res)) => res,
+            Ok(Err(e)) => {
+                tracing::warn!("response policy evaluation task panicked: {e}");
+                return Ok(Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .header("content-type", "application/json")
+                    .body(Full::new(bytes::Bytes::from(
+                        r#"{"error":"policy evaluation failed"}"#,
+                    )))
+                    .unwrap_or_else(|e| {
+                        tracing::error!("response policy error response build failed: {:?}", e);
+                        response_500()
+                    }));
+            }
+            Err(_) => {
+                tracing::warn!("response policy evaluation timed out");
+                return Ok(Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .header("content-type", "application/json")
+                    .body(Full::new(bytes::Bytes::from(
+                        r#"{"error":"policy evaluation failed"}"#,
+                    )))
+                    .unwrap_or_else(|e| {
+                        tracing::error!("response policy timeout response build failed: {:?}", e);
+                        response_500()
+                    }));
+            }
+        };
+        if let Ok(decision) = policy_result {
             if !decision.allow {
                 let reason = decision
                     .reason
@@ -1131,13 +1199,22 @@ struct PolicyUpdateBody {
     restricted_endpoints: Option<Vec<String>>,
 }
 
-async fn handle_policy_post(state: ProxyState, mut req: Request<Incoming>) -> Result<Response<ProxyBody>> {
-    let body = req.body_mut();
-    let bytes = body
-        .collect()
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to read body: {}", e))?
-        .to_bytes();
+async fn handle_policy_post(state: ProxyState, req: Request<Incoming>) -> Result<Response<ProxyBody>> {
+    let (_, body) = req.into_parts();
+    let limited = Limited::new(body, MAX_POLICY_BODY_BYTES);
+    let collected = match limited.collect().await {
+        Ok(c) => c,
+        Err(e) => {
+            if e.downcast_ref::<LengthLimitError>().is_some() {
+                return Ok(response_with(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    r#"{"error":"policy body too large"}"#,
+                ));
+            }
+            return Err(anyhow::anyhow!("failed to read body: {}", e));
+        }
+    };
+    let bytes = collected.to_bytes();
     let update: PolicyUpdateBody = match serde_json::from_slice(&bytes) {
         Ok(u) => u,
         Err(e) => {
@@ -1224,8 +1301,17 @@ fn absolute_uri(uri: &Uri, headers: &http::HeaderMap<HeaderValue>) -> Result<Uri
         .and_then(|v| v.to_str().ok())
         .context("missing host header")?;
 
+    // Prevent CRLF / control character injection (CVE: request smuggling)
+    let host_trimmed = host.trim();
+    if !host_trimmed.bytes().all(|b| b >= 0x20 && b != 0x7f) {
+        anyhow::bail!("invalid host header: control characters not allowed");
+    }
+    if host_trimmed.contains(['\r', '\n']) {
+        anyhow::bail!("invalid host header: CR/LF not allowed");
+    }
+
     let path_q = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
-    let joined = format!("http://{host}{path_q}");
+    let joined = format!("http://{host_trimmed}{path_q}");
     joined
         .parse::<Uri>()
         .with_context(|| format!("invalid absolute URI: {joined}"))
@@ -1559,7 +1645,43 @@ async fn handle_mitm_request(
 
     if let Some(ref engine) = state.payload_engine {
         let policy_eval_started = Instant::now();
-        match engine.evaluate(&rego_input) {
+        let engine = Arc::clone(engine);
+        let rego_input_clone = rego_input.clone();
+        let eval_result = tokio::time::timeout(
+            Duration::from_millis(POLICY_EVAL_TIMEOUT_MS),
+            tokio::task::spawn_blocking(move || engine.evaluate(&rego_input_clone)),
+        )
+        .await;
+        let policy_result = match eval_result {
+            Ok(Ok(res)) => res,
+            Ok(Err(e)) => {
+                tracing::warn!("payload policy evaluation task panicked: {e}");
+                return Ok(Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .header("content-type", "application/json")
+                    .body(Full::new(bytes::Bytes::from(
+                        r#"{"error":"policy evaluation failed"}"#,
+                    )))
+                    .unwrap_or_else(|e| {
+                        tracing::error!("payload policy error response build failed: {:?}", e);
+                        response_500()
+                    }));
+            }
+            Err(_) => {
+                tracing::warn!("payload policy evaluation timed out");
+                return Ok(Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .header("content-type", "application/json")
+                    .body(Full::new(bytes::Bytes::from(
+                        r#"{"error":"policy evaluation failed"}"#,
+                    )))
+                    .unwrap_or_else(|e| {
+                        tracing::error!("payload policy timeout response build failed: {:?}", e);
+                        response_500()
+                    }));
+            }
+        };
+        match policy_result {
             Ok(decision) if !decision.allow => {
                 telemetry::observe_policy_eval_ms(
                     policy_eval_started.elapsed().as_secs_f64() * 1000.0,
@@ -1859,7 +1981,42 @@ async fn handle_mitm_request(
             headers: headers_to_map(&headers),
         };
         let policy_eval_started = Instant::now();
-        match engine.evaluate(&response_input) {
+        let engine = Arc::clone(engine);
+        let eval_result = tokio::time::timeout(
+            Duration::from_millis(POLICY_EVAL_TIMEOUT_MS),
+            tokio::task::spawn_blocking(move || engine.evaluate(&response_input)),
+        )
+        .await;
+        let policy_result = match eval_result {
+            Ok(Ok(res)) => res,
+            Ok(Err(e)) => {
+                tracing::warn!("response policy evaluation task panicked: {e}");
+                return Ok(Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .header("content-type", "application/json")
+                    .body(Full::new(bytes::Bytes::from(
+                        r#"{"error":"policy evaluation failed"}"#,
+                    )))
+                    .unwrap_or_else(|e| {
+                        tracing::error!("response policy block build failed: {:?}", e);
+                        response_500()
+                    }));
+            }
+            Err(_) => {
+                tracing::warn!("response policy evaluation timed out");
+                return Ok(Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .header("content-type", "application/json")
+                    .body(Full::new(bytes::Bytes::from(
+                        r#"{"error":"policy evaluation failed"}"#,
+                    )))
+                    .unwrap_or_else(|e| {
+                        tracing::error!("response policy timeout build failed: {:?}", e);
+                        response_500()
+                    }));
+            }
+        };
+        match policy_result {
             Ok(decision) if !decision.allow => {
                 telemetry::observe_policy_eval_ms(
                     policy_eval_started.elapsed().as_secs_f64() * 1000.0,

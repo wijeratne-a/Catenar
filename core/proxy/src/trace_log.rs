@@ -1,6 +1,12 @@
+//! Trace WAL with BLAKE3 hash chain for audit integrity.
+//!
+//! **Chain truncation:** The chain does not detect truncation or replacement of the log head.
+//! For high-assurance deployments, consider external integrity (e.g. signed checkpoints,
+//! append-only store).
+
 use std::{
     fs::{self, OpenOptions},
-    io::Write,
+    io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -32,6 +38,7 @@ impl TraceLogger {
     }
 
     pub fn append<T: Serialize>(&self, value: &T) -> Result<()> {
+        // Recover from poisoned mutex to avoid process crash; prefer explicit handling over panic.
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let mut file = OpenOptions::new()
             .create(true)
@@ -84,11 +91,29 @@ fn compute_chain_hash(previous_hash: &str, payload: &str) -> String {
     format!("0x{}", hasher.finalize().to_hex())
 }
 
+const TAIL_BYTES: usize = 64 * 1024; // 64 KB from end; avoids OOM on large WAL
+
 fn load_last_hash(path: &Path) -> String {
-    let content = match fs::read_to_string(path) {
-        Ok(content) => content,
+    let mut file = match std::fs::File::open(path) {
+        Ok(f) => f,
         Err(_) => return String::new(),
     };
+    let len = match file.seek(SeekFrom::End(0)) {
+        Ok(n) => n as usize,
+        Err(_) => return String::new(),
+    };
+    if len == 0 {
+        return String::new();
+    }
+    let start = len.saturating_sub(TAIL_BYTES);
+    if file.seek(SeekFrom::Start(start as u64)).is_err() {
+        return String::new();
+    }
+    let mut tail = vec![0u8; len - start];
+    if file.read_exact(&mut tail).is_err() {
+        return String::new();
+    }
+    let content = String::from_utf8_lossy(&tail);
     for line in content.lines().rev() {
         let trimmed = line.trim();
         if trimmed.is_empty() {

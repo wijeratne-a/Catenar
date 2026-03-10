@@ -137,6 +137,8 @@ When Agent A calls Agent B, pass `parent_task_id` in trace entries so you can qu
 
 **Swarm demo:** `python examples/swarm_demo.py` — Agent A calls Agent B over HTTP with `X-Catenar-Parent-Task-Id`; script asserts lineage. Dashboard Receipts page has a lineage filter and displays `parent_task_ids`.
 
+**Trust:** Lineage is best-effort; see [trust-model.md](../security/trust-model.md) for limits and high-assurance options.
+
 ## Webhook + Alerts
 
 To receive policy violation alerts in the Control Plane:
@@ -158,5 +160,5 @@ To receive policy violation alerts in the Control Plane:
 
 ## Production Security
 
-- **Verifier API key**: For production, set `VERIFIER_API_KEY` and pass it as Bearer token or `x-api-key` when calling the verifier.
+- **Verifier API key**: Set `VERIFIER_API_KEY` for all production deployments. Pass it as Bearer token or `x-api-key` when calling the verifier. When unset, the verifier API is unauthenticated. Use `VERIFIER_REQUIRE_API_KEY=1` to fail startup if the key is not configured. See [trust-model.md](../security/trust-model.md).
 - **Grafana**: For production, set `GRAFANA_ADMIN_PASSWORD` to a strong value. Never use the default in production.

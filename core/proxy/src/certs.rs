@@ -116,11 +116,12 @@ impl RootCa {
 /// Resolves server cert by forging a leaf for the SNI from ClientHello.
 /// Uses an LRU cache so the least-recently-used entry is evicted when capacity is reached.
 /// Rate-limited to 100 forges per 60 seconds for DoS mitigation.
+/// forge_count and last_reset are shared across clones so rate limit applies globally.
 pub struct DynamicCertResolver {
     ca: Arc<RootCa>,
     cache: Arc<Mutex<LruCache<String, Arc<rustls::sign::CertifiedKey>>>>,
-    forge_count: AtomicU64,
-    last_reset: Mutex<Option<Instant>>,
+    forge_count: Arc<AtomicU64>,
+    last_reset: Arc<Mutex<Option<Instant>>>,
 }
 
 impl Clone for DynamicCertResolver {
@@ -128,8 +129,8 @@ impl Clone for DynamicCertResolver {
         Self {
             ca: Arc::clone(&self.ca),
             cache: Arc::clone(&self.cache),
-            forge_count: AtomicU64::new(0),
-            last_reset: Mutex::new(None),
+            forge_count: Arc::clone(&self.forge_count),
+            last_reset: Arc::clone(&self.last_reset),
         }
     }
 }
@@ -144,8 +145,8 @@ impl DynamicCertResolver {
             cache: Arc::new(Mutex::new(LruCache::new(
                 std::num::NonZeroUsize::new(CERT_CACHE_CAP).expect("non-zero cache cap"),
             ))),
-            forge_count: AtomicU64::new(0),
-            last_reset: Mutex::new(None),
+            forge_count: Arc::new(AtomicU64::new(0)),
+            last_reset: Arc::new(Mutex::new(None)),
         }
     }
 

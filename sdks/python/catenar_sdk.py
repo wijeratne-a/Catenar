@@ -266,6 +266,9 @@ class Catenar:
         }
         try:
             validated = VerifyRequestModel.model_validate(payload).model_dump(mode="json")
+            if os.environ.get("CATENAR_TRACE_DEBUG"):
+                with open(os.path.join(tempfile.gettempdir(), "catenar-trace-debug.json"), "w") as f:
+                    json.dump({"trace_parent_task_ids": [e.get("parent_task_id") for e in validated.get("execution_trace", [])]}, f)
         except ValidationError as exc:
             self._result_queue.put(
                 CatenarResult(payload, 400, {"valid": False, "reason": str(exc)})

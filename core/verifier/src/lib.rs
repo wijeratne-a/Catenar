@@ -274,6 +274,21 @@ pub async fn run(key_provider: Arc<dyn KeyProvider>) -> anyhow::Result<()> {
         rate_limit: Arc::new(DashMap::new()),
     };
 
+    if state.api_key.is_none() {
+        tracing::warn!(
+            "VERIFIER_API_KEY not set; verifier API is unauthenticated. Set VERIFIER_API_KEY in production."
+        );
+        if std::env::var("VERIFIER_REQUIRE_API_KEY")
+            .map(|v| v.trim().eq_ignore_ascii_case("1") || v.trim().eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
+            anyhow::bail!(
+                "VERIFIER_REQUIRE_API_KEY is set but VERIFIER_API_KEY is not set. \
+                 Configure VERIFIER_API_KEY for production."
+            );
+        }
+    }
+
     let cors = build_cors_layer();
 
     let healthz = Router::new()
@@ -373,6 +388,16 @@ async fn verify_handler(
     headers: HeaderMap,
     Json(request): Json<VerifyRequest>,
 ) -> AppResult<Json<VerifyResponse>> {
+    let parent_task_ids_received: Vec<&str> = request
+        .execution_trace
+        .iter()
+        .filter_map(|e| e.parent_task_id.as_deref())
+        .collect();
+    tracing::info!(
+        trace_len = request.execution_trace.len(),
+        parent_task_ids_in_request = ?parent_task_ids_received,
+        "verify request received"
+    );
     request
         .validate_bounds()
         .map_err(|e| AppError {

@@ -15,10 +15,13 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 import threading
 import time
+import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs
 
 _root = Path(__file__).resolve().parent.parent
 _sdk_path = str(_root / "sdks" / "python")
@@ -53,11 +56,19 @@ def run_agent_b(verifier_url: str) -> HTTPServer:
     class AgentBHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             parent_task_id = self.headers.get(HEADER_PARENT_TASK_ID, "").strip()
-            catenar = Catenar(base_url=verifier_url, batch_size=1, flush_interval_s=0.1, agent_id="agent-b")
+            # Use unique WAL path so we don't load Agent A's entries (shared default would pollute our trace)
+            wal_path = str(Path(tempfile.gettempdir()) / f"catenar-swarm-b-{uuid.uuid4().hex[:8]}.jsonl")
+            catenar = Catenar(base_url=verifier_url, batch_size=1, flush_interval_s=0.1, agent_id="agent-b", wal_path=wal_path)
             policy = {"public_values": {"restricted_endpoints": ["/admin"]}}
             catenar.init(policy=policy, domain="defi", public_values=policy["public_values"])
             if parent_task_id:
                 catenar._parent_task_id = parent_task_id
+            else:
+                # Fallback: try query param (e.g. ?parent_task_id=XXX) - headers can be stripped by proxies
+                qs = parse_qs(urlparse(self.path).query)
+                qs_parent = (qs.get("parent_task_id") or [""])[0].strip()
+                if qs_parent:
+                    catenar._parent_task_id = qs_parent
 
             @catenar.trace
             def sub_task(x: int) -> dict:
@@ -74,6 +85,9 @@ def run_agent_b(verifier_url: str) -> HTTPServer:
             self.wfile.write(json.dumps({
                 "receipt_id": proof.get("receipt_id", ""),
                 "parent_task_ids": proof.get("parent_task_ids", []),
+                "_debug_received_parent": parent_task_id or catenar._parent_task_id,
+                "_debug_path": self.path,
+                "_debug_qs_parent": (parse_qs(urlparse(self.path).query).get("parent_task_id") or [""])[0],
             }).encode())
 
         def log_message(self, format: str, *args: object) -> None:
@@ -117,13 +131,14 @@ def main() -> None:
         sys.exit(1)
 
     # Agent A calls Agent B with parent_task_id.
-    # With catenar_intercept: use catenar.set_parent_task_id(receipt_id_a) so
-    # X-Catenar-Caller and X-Catenar-Trace are injected automatically.
-    proxy = os.environ.get("HTTP_PROXY", "http://127.0.0.1:8080")
+    # Pass in header and query param. Use proxies=None for Agent B call to avoid proxy stripping.
+    url = f"http://127.0.0.1:{AGENT_B_PORT}/?parent_task_id={requests.utils.quote(receipt_id_a)}"
+    if os.environ.get("SWARM_DEBUG"):
+        print(f"[SWARM_DEBUG] Agent A requesting url={url!r}", flush=True)
     resp = requests.get(
-        f"http://127.0.0.1:{AGENT_B_PORT}/",
+        url,
         headers={HEADER_PARENT_TASK_ID: receipt_id_a},
-        proxies={"http": proxy, "https": proxy},
+        proxies={"http": None, "https": None},  # Bypass proxy for direct agent-to-agent call
         timeout=5,
     )
     resp.raise_for_status()
@@ -137,6 +152,9 @@ def main() -> None:
     body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
     parent_task_ids = body.get("parent_task_ids", [])
     receipt_id_b = body.get("receipt_id", "")
+    debug_received = body.get("_debug_received_parent", "")
+    debug_path = body.get("_debug_path", "")
+    debug_qs = body.get("_debug_qs_parent", "")
 
     if receipt_id_a in parent_task_ids:
         print("PASS: Agent B receipt has parent_task_ids containing Agent A receipt_id")
@@ -147,6 +165,8 @@ def main() -> None:
         print("FAIL: Agent B receipt missing parent_task_id from Agent A")
         print(f"  Agent A receipt_id: {receipt_id_a}")
         print(f"  Agent B parent_task_ids: {parent_task_ids}")
+        print(f"  Agent B _debug_received_parent: {debug_received!r}")
+        print(f"  Agent B _debug_path: {debug_path!r} _debug_qs_parent: {debug_qs!r}")
         sys.exit(1)
 
     catenar_a.close()

@@ -195,3 +195,85 @@ pub struct VerifyResponse {
 pub struct ReceiptIngestResponse {
     pub status: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trace_entry_deserializes_parent_task_id() {
+        let json = r#"{"action":"function_call","target":"sub_task","parent_task_id":"my-parent-12345"}"#;
+        let entry: TraceEntry = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(entry.parent_task_id.as_deref(), Some("my-parent-12345"));
+    }
+
+    #[test]
+    fn verify_request_deserializes_parent_task_id_in_trace() {
+        let json = r#"{
+            "agent_metadata": {"domain": "defi", "version": "1.0"},
+            "policy_commitment": "0xabc",
+            "execution_trace": [{"action": "function_call", "target": "sub_task", "parent_task_id": "my-parent-12345"}],
+            "public_values": {"restricted_endpoints": ["/admin"]}
+        }"#;
+        let req: VerifyRequest = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(req.execution_trace.len(), 1);
+        assert_eq!(
+            req.execution_trace[0].parent_task_id.as_deref(),
+            Some("my-parent-12345")
+        );
+    }
+
+    /// SDK sends trace with "details" object - ensure parent_task_id still deserializes.
+    #[test]
+    fn verify_request_with_full_sdk_trace_structure() {
+        let json = r#"{
+            "agent_metadata": {"domain": "defi", "version": "1.0"},
+            "policy_commitment": "0xabc",
+            "execution_trace": [{
+                "action": "function_call",
+                "target": "sub_task",
+                "amount": null,
+                "table": null,
+                "details": {"function": "sub_task", "args": [42], "kwargs": {}, "result": {"result": 84}, "execution_ms": 0.5},
+                "reasoning_summary": null,
+                "model_id": null,
+                "instruction_hash": null,
+                "parent_task_id": "agent-a-receipt-uuid"
+            }],
+            "public_values": {"restricted_endpoints": ["/admin"]}
+        }"#;
+        let req: VerifyRequest = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(req.execution_trace.len(), 1);
+        assert_eq!(
+            req.execution_trace[0].parent_task_id.as_deref(),
+            Some("agent-a-receipt-uuid")
+        );
+    }
+
+    #[test]
+    fn parent_task_ids_extraction_from_trace() {
+        let trace = vec![
+            TraceEntry {
+                action: "function_call".to_string(),
+                target: "sub".to_string(),
+                amount: None,
+                table: None,
+                details: None,
+                reasoning_summary: None,
+                model_id: None,
+                instruction_hash: None,
+                parent_task_id: Some("parent-uuid-1".to_string()),
+            },
+        ];
+        let ids: Vec<String> = trace
+            .iter()
+            .filter_map(|e| e.parent_task_id.as_ref())
+            .cloned()
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .take(64)
+            .collect();
+        assert!(!ids.is_empty());
+        assert!(ids.contains(&"parent-uuid-1".to_string()));
+    }
+}
