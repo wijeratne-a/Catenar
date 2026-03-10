@@ -110,7 +110,7 @@ export default function IncidentDetailPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `aegis-incident-${incident.incident_id}.json`;
+    a.download = `catenar-incident-${incident.incident_id}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -212,7 +212,7 @@ export default function IncidentDetailPage() {
             </span>
             <p className="mt-1 text-sm text-muted-foreground">
               Run <code className="rounded bg-muted/50 px-1">make verify</code> or{" "}
-              <code className="rounded bg-muted/50 px-1">cargo run --manifest-path tools/aegis-verify/Cargo.toml -- ./data/proxy-trace.jsonl</code> to
+              <code className="rounded bg-muted/50 px-1">cargo run --manifest-path tools/catenar-verify/Cargo.toml -- ./data/proxy-trace.jsonl</code> to
               verify BLAKE3 hash chain integrity of the proxy trace log.
             </p>
           </div>

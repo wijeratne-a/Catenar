@@ -1,5 +1,5 @@
 # Response-level policy for upstream prompt-injection and secret exfiltration patterns.
-package aegis.response
+package catenar.response
 
 default allow = true
 

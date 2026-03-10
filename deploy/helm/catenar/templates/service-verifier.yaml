@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: catenar-verifier
+spec:
+  selector:
+    app: catenar-verifier
+  ports:
+    - name: http
+      port: {{ .Values.verifier.port }}
+      targetPort: {{ .Values.verifier.port }}

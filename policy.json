@@ -1,5 +1,5 @@
 {
     "version": "1.0",
-    "allowed_paths": ["/tmp/aegis_allowed.txt"],
+    "allowed_paths": ["/tmp/catenar_allowed.txt"],
     "denied_paths": ["/etc/shadow"]
 }

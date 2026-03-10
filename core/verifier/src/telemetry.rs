@@ -88,11 +88,11 @@ pub fn increment_identity_bound(domain: &str) {
 
 pub fn init_telemetry() -> Result<()> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let json_logs = std::env::var("AEGIS_LOG_FORMAT")
+    let json_logs = std::env::var("CATENAR_LOG_FORMAT")
         .map(|v| v.eq_ignore_ascii_case("json"))
         .unwrap_or(true);
     let service_name =
-        std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "aegis-verifier".to_string());
+        std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "catenar-verifier".to_string());
 
     let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok();
 
@@ -124,16 +124,16 @@ pub fn init_telemetry() -> Result<()> {
             .with_reader(reader)
             .build();
         global::set_meter_provider(meter_provider);
-        let meter = global::meter("aegis-verifier");
+        let meter = global::meter("catenar-verifier");
         let _ = METRICS.set(Metrics {
-            policy_violation: meter.u64_counter("aegis.policy_violation").build(),
-            verification_success: meter.u64_counter("aegis.verification_success").build(),
+            policy_violation: meter.u64_counter("catenar.policy_violation").build(),
+            verification_success: meter.u64_counter("catenar.verification_success").build(),
             identity_bound_verification: meter
-                .u64_counter("aegis.identity_bound_verification")
+                .u64_counter("catenar.identity_bound_verification")
                 .build(),
-            violation_rate: meter.u64_counter("aegis.verifier.violation_rate").build(),
+            violation_rate: meter.u64_counter("catenar.verifier.violation_rate").build(),
             consecutive_violations: meter
-                .u64_histogram("aegis.verifier.consecutive_violations")
+                .u64_histogram("catenar.verifier.consecutive_violations")
                 .build(),
         });
 

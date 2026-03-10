@@ -12,7 +12,7 @@ We support the latest minor release. Security fixes may be backported to prior m
 
 **Do not** open a public GitHub issue for security vulnerabilities.
 
-1. **Email** the maintainers (or use [GitHub Security Advisories](https://github.com/wijeratne-a/Aegis/security/advisories) if available)
+1. **Email** the maintainers (or use [GitHub Security Advisories](https://github.com/wijeratne-a/Catenar/security/advisories) if available)
 2. Include:
    - Description of the vulnerability
    - Steps to reproduce

@@ -10,8 +10,8 @@ use tokio::io::AsyncSeekExt;
 use tokio::signal;
 
 #[derive(Parser)]
-#[command(name = "aegis")]
-#[command(about = "Aegis debug CLI")]
+#[command(name = "catenar")]
+#[command(about = "Catenar debug CLI")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,

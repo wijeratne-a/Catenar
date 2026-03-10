@@ -1,8 +1,8 @@
-# Aegis Architecture
+# Catenar Architecture
 
 ## Overview
 
-Aegis is a Zero Trust Network Access (ZTNA) layer for AI agents. It sits between agents and external tools/databases, inspecting traffic, enforcing policy, and producing cryptographically verifiable Proof-of-Task (PoT) receipts.
+Catenar is a Zero Trust Network Access (ZTNA) layer for AI agents. It sits between agents and external tools/databases, inspecting traffic, enforcing policy, and producing cryptographically verifiable Proof-of-Task (PoT) receipts.
 
 ## Components
 
@@ -17,7 +17,7 @@ Aegis is a Zero Trust Network Access (ZTNA) layer for AI agents. It sits between
 
 ### SDKs
 
-- **Python SDK** (`sdks/python`): `@aegis.trace` decorator, policy registration, trace emission. Used by Python agents.
+- **Python SDK** (`sdks/python`): `@catenar.trace` decorator, policy registration, trace emission. Used by Python agents.
 - **Node.js SDK** (`sdks/nodejs`): Equivalent for Node.js agents.
 
 ### Crypto Utilities

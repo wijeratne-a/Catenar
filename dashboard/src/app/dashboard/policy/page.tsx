@@ -50,7 +50,7 @@ export default function PolicyBuilderPage() {
       domain: "defi",
       max_spend: "" as unknown as number | undefined,
       restricted_endpoints: [""],
-      rego_policy: "package aegis\n\ndefault allow = false\ndefault reason = \"policy denied request\"\n",
+      rego_policy: "package catenar\n\ndefault allow = false\ndefault reason = \"policy denied request\"\n",
     },
   });
 
@@ -107,7 +107,7 @@ export default function PolicyBuilderPage() {
             Active Policy
           </CardTitle>
           <CardDescription>
-            Policy source and version for audit. Deploy via Git merge; Aegis picks up changes automatically.
+            Policy source and version for audit. Deploy via Git merge; Catenar picks up changes automatically.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -209,7 +209,7 @@ export default function PolicyBuilderPage() {
                     id="rego_policy"
                     rows={12}
                     className="w-full rounded-md border border-input bg-background p-3 font-mono text-sm"
-                    placeholder="package aegis"
+                    placeholder="package catenar"
                     {...register("rego_policy")}
                   />
                 </TabsContent>

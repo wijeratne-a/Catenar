@@ -189,9 +189,9 @@ fn cidr_contains(cidr: &str, ip: IpAddr) -> bool {
     }
 }
 
-/// When AEGIS_DEMO_EVIL_PORT or AEGIS_STRESS_MOCK_PORT is set, allow 127.0.0.1:{port} for local demo/mock.
+/// When CATENAR_DEMO_EVIL_PORT or CATENAR_STRESS_MOCK_PORT is set, allow 127.0.0.1:{port} for local demo/mock.
 fn is_demo_evil_host_allowed(authority: &str) -> bool {
-    for env_key in ["AEGIS_DEMO_EVIL_PORT", "AEGIS_STRESS_MOCK_PORT"] {
+    for env_key in ["CATENAR_DEMO_EVIL_PORT", "CATENAR_STRESS_MOCK_PORT"] {
         if let Ok(port) = std::env::var(env_key) {
             let port = port.trim();
             if !port.is_empty() && authority == format!("127.0.0.1:{}", port) {
@@ -231,12 +231,12 @@ async fn host_resolves_to_unsafe_ip(host_or_authority: &str) -> Result<bool> {
         .next()
         .unwrap_or(host_or_authority)
         .trim();
-    // Demo bypass: when AEGIS_DEMO_EVIL_PORT or AEGIS_STRESS_MOCK_PORT is set, allow 127.0.0.1 for local demo/mock
+    // Demo bypass: when CATENAR_DEMO_EVIL_PORT or CATENAR_STRESS_MOCK_PORT is set, allow 127.0.0.1 for local demo/mock
     if host == "127.0.0.1"
-        && (std::env::var("AEGIS_DEMO_EVIL_PORT")
+        && (std::env::var("CATENAR_DEMO_EVIL_PORT")
             .map(|p| !p.trim().is_empty())
             .unwrap_or(false)
-            || std::env::var("AEGIS_STRESS_MOCK_PORT")
+            || std::env::var("CATENAR_STRESS_MOCK_PORT")
                 .map(|p| !p.trim().is_empty())
                 .unwrap_or(false))
     {
@@ -446,7 +446,7 @@ fn redact_query_from_target(target: &str) -> String {
 
 fn insert_request_id_header(headers: &mut http::HeaderMap<HeaderValue>, request_id: &str) {
     if let Ok(value) = HeaderValue::from_str(request_id) {
-        headers.insert("X-Aegis-Request-Id", value);
+        headers.insert("X-Catenar-Request-Id", value);
     }
 }
 
@@ -525,11 +525,11 @@ fn block_response(
 ) -> Response<ProxyBody> {
     let message: String = message_override
         .map(String::from)
-        .unwrap_or_else(|| format!("AEGIS SECURITY BLOCK: {}. Do not retry.", reason));
+        .unwrap_or_else(|| format!("CATENAR SECURITY BLOCK: {}. Do not retry.", reason));
     if config.semantic_deny {
         let mut body = serde_json::json!({
             "status": "error",
-            "aegis_block": true,
+            "catenar_block": true,
             "message": message,
             "reason": reason
         });
@@ -539,10 +539,10 @@ fn block_response(
         Response::builder()
             .status(StatusCode::OK)
             .header("content-type", "application/json")
-            .header("X-Aegis-Blocked", "true")
+            .header("X-Catenar-Blocked", "true")
             .body(Full::new(bytes::Bytes::from(
                 serde_json::to_string(&body)
-                    .unwrap_or_else(|_| r#"{"status":"error","aegis_block":true}"#.to_string()),
+                    .unwrap_or_else(|_| r#"{"status":"error","catenar_block":true}"#.to_string()),
             )))
             .unwrap_or_else(|e| {
                 tracing::error!("block_response semantic body build failed: {:?}", e);
@@ -552,7 +552,7 @@ fn block_response(
         Response::builder()
             .status(status_when_strict)
             .header("content-type", "application/json")
-            .header("X-Aegis-Blocked", "true")
+            .header("X-Catenar-Blocked", "true")
             .body(Full::new(bytes::Bytes::from(
                 serde_json::to_string(&serde_json::json!({
                     "error": "policy violation",
@@ -624,7 +624,7 @@ fn classify_violation(reason: &str) -> telemetry::ViolationType {
         || reason_lc.contains("delete mutation")
     {
         telemetry::ViolationType::UnauthorizedDataMutation
-    } else if reason_lc.contains("x-aegis-trace") || reason_lc.contains("audit") {
+    } else if reason_lc.contains("x-catenar-trace") || reason_lc.contains("audit") {
         telemetry::ViolationType::MissingAuditTrace
     } else {
         telemetry::ViolationType::PolicyViolation
@@ -663,7 +663,7 @@ pub async fn handle(
             &state.config,
             StatusCode::TOO_MANY_REQUESTS,
             "rate limit exceeded",
-            Some("Aegis Security Block: Rate limit exceeded. Do not retry."),
+            Some("Catenar Security Block: Rate limit exceeded. Do not retry."),
             None,
         ));
     }
@@ -765,9 +765,9 @@ pub async fn handle(
     }
 
     let identity = get_identity(req.headers());
-    req.headers_mut().remove("x-aegis-session-id");
-    req.headers_mut().remove("x-aegis-user-id");
-    req.headers_mut().remove("x-aegis-iam-role");
+    req.headers_mut().remove("x-catenar-session-id");
+    req.headers_mut().remove("x-catenar-user-id");
+    req.headers_mut().remove("x-catenar-iam-role");
 
     let target_uri = absolute_uri(req.uri(), req.headers())
         .context("failed to resolve absolute URI for proxy request")?;
@@ -863,10 +863,10 @@ pub async fn handle(
     };
     let request_id = generate_request_id();
     let request_span = info_span!(
-        "aegis.proxy.request",
+        "catenar.proxy.request",
         method = %method,
         target_host = %target_host,
-        aegis.request_id = %request_id,
+        catenar.request_id = %request_id,
         blocked = blocked,
         enforce_mode = enforce_mode.as_str()
     );
@@ -948,7 +948,7 @@ pub async fn handle(
                     &state.config,
                     StatusCode::PAYLOAD_TOO_LARGE,
                     "request body exceeds 5MB limit",
-                    Some("Aegis Security Block: Payload too large. Reduce request body size. Do not retry."),
+                    Some("Catenar Security Block: Payload too large. Reduce request body size. Do not retry."),
                     None,
                 ));
             }
@@ -985,7 +985,7 @@ pub async fn handle(
                     &state.config,
                     StatusCode::GATEWAY_TIMEOUT,
                     "upstream timeout",
-                    Some("Aegis: Upstream request timed out. Do not retry."),
+                    Some("Catenar: Upstream request timed out. Do not retry."),
                     None,
                 ));
             }
@@ -1028,7 +1028,7 @@ pub async fn handle(
                     &state.config,
                     StatusCode::GATEWAY_TIMEOUT,
                     "upstream timeout",
-                    Some("Aegis: Upstream request timed out. Do not retry."),
+                    Some("Catenar: Upstream request timed out. Do not retry."),
                     None,
                 ));
             }
@@ -1078,7 +1078,7 @@ pub async fn handle(
                     ),
                 );
                 let injection_override = if decision.response_injection.is_some() {
-                    Some("AEGIS INTERCEPT: Malicious Prompt Injection detected in tool response.")
+                    Some("CATENAR INTERCEPT: Malicious Prompt Injection detected in tool response.")
                 } else {
                     None
                 };
@@ -1351,7 +1351,7 @@ async fn run_mitm_tunnel(
     }
     if !looks_like_http(&peeked) && !is_websocket {
         return Err(anyhow::anyhow!(
-            "Non-HTTP/1.1 protocol detected on CONNECT tunnel to {}; Aegis V1 supports HTTP/1.1 only (HTTP/2 not supported)",
+            "Non-HTTP/1.1 protocol detected on CONNECT tunnel to {}; Catenar V1 supports HTTP/1.1 only (HTTP/2 not supported)",
             authority
         ));
     }
@@ -1388,8 +1388,8 @@ async fn handle_mitm_request(
     let method = req.method().clone();
     let request_id = generate_request_id();
     let request_span = info_span!(
-        "aegis.proxy.mitm_request",
-        aegis.request_id = %request_id,
+        "catenar.proxy.mitm_request",
+        catenar.request_id = %request_id,
         method = %method,
         authority = %authority
     );
@@ -1430,7 +1430,7 @@ async fn handle_mitm_request(
                     &state.config,
                     StatusCode::PAYLOAD_TOO_LARGE,
                     "request body exceeds 5MB limit",
-                    Some("Aegis Security Block: Payload too large. Reduce request body size. Do not retry."),
+                    Some("Catenar Security Block: Payload too large. Reduce request body size. Do not retry."),
                     None,
                 ));
             }
@@ -1467,7 +1467,7 @@ async fn handle_mitm_request(
                     reason.to_string()
                 };
                 let msg = format!(
-                    "Aegis Schema Validation Failed: {}. Do not retry with same payload.",
+                    "Catenar Schema Validation Failed: {}. Do not retry with same payload.",
                     truncated
                 );
                 telemetry::increment_blocked(&host, telemetry::ViolationType::SchemaValidation);
@@ -1690,20 +1690,20 @@ async fn handle_mitm_request(
         format!("0x{}", hasher.finalize().to_hex())
     };
     headers.insert(
-        "x-aegis-trace",
+        "x-catenar-trace",
         http::HeaderValue::from_str(&trace_hash)
             .unwrap_or_else(|_| http::HeaderValue::from_static("invalid")),
     );
     if let Some(ref c) = identity.user_id {
         if sanitize_header_value(c) {
             if let Ok(v) = http::HeaderValue::from_str(c) {
-                let _ = headers.insert("x-aegis-caller", v);
+                let _ = headers.insert("x-catenar-caller", v);
             }
         }
     } else if let Some(ref s) = identity.session_id {
         if sanitize_header_value(s) {
             if let Ok(v) = http::HeaderValue::from_str(s) {
-                let _ = headers.insert("x-aegis-caller", v);
+                let _ = headers.insert("x-catenar-caller", v);
             }
         }
     }
@@ -1776,7 +1776,7 @@ async fn handle_mitm_request(
                     &state.config,
                     StatusCode::GATEWAY_TIMEOUT,
                     "upstream timeout",
-                    Some("Aegis: Upstream request timed out. Do not retry."),
+                    Some("Catenar: Upstream request timed out. Do not retry."),
                     None,
                 ));
             }
@@ -1791,7 +1791,7 @@ async fn handle_mitm_request(
             &state.config,
             StatusCode::BAD_GATEWAY,
             "upstream response too large",
-            Some("Aegis: Upstream response exceeds size limit. Do not retry."),
+            Some("Catenar: Upstream response exceeds size limit. Do not retry."),
             None,
         ));
     }
@@ -1828,7 +1828,7 @@ async fn handle_mitm_request(
                         &state.config,
                         StatusCode::GATEWAY_TIMEOUT,
                         "upstream timeout",
-                        Some("Aegis: Upstream request timed out. Do not retry."),
+                        Some("Catenar: Upstream request timed out. Do not retry."),
                         None,
                     ));
                 }
@@ -1841,7 +1841,7 @@ async fn handle_mitm_request(
                 &state.config,
                 StatusCode::BAD_GATEWAY,
                 "upstream response too large",
-                Some("Aegis: Upstream response exceeds size limit. Do not retry."),
+                Some("Catenar: Upstream response exceeds size limit. Do not retry."),
                 None,
             ));
         }
@@ -1910,7 +1910,7 @@ async fn handle_mitm_request(
                     StatusCode::FORBIDDEN
                 };
                 let injection_override = if decision.response_injection.is_some() {
-                    Some("AEGIS INTERCEPT: Malicious Prompt Injection detected in tool response.")
+                    Some("CATENAR INTERCEPT: Malicious Prompt Injection detected in tool response.")
                 } else {
                     None
                 };
@@ -2026,7 +2026,7 @@ mod tests {
         insert_request_id_header(&mut headers, "abc-123");
         assert_eq!(
             headers
-                .get("X-Aegis-Request-Id")
+                .get("X-Catenar-Request-Id")
                 .and_then(|v| v.to_str().ok()),
             Some("abc-123")
         );

@@ -39,13 +39,13 @@ pub struct EnvKeyProvider {
 
 impl EnvKeyProvider {
     pub fn from_env() -> Result<Self> {
-        let hex_key = std::env::var("AEGIS_SIGNING_KEY_HEX")
-            .context("AEGIS_SIGNING_KEY_HEX missing for EnvKeyProvider")?;
-        let raw = hex::decode(hex_key).context("AEGIS_SIGNING_KEY_HEX is invalid hex")?;
+        let hex_key = std::env::var("CATENAR_SIGNING_KEY_HEX")
+            .context("CATENAR_SIGNING_KEY_HEX missing for EnvKeyProvider")?;
+        let raw = hex::decode(hex_key).context("CATENAR_SIGNING_KEY_HEX is invalid hex")?;
         let arr: [u8; 32] = raw
             .as_slice()
             .try_into()
-            .context("AEGIS_SIGNING_KEY_HEX must be 32 bytes")?;
+            .context("CATENAR_SIGNING_KEY_HEX must be 32 bytes")?;
         Ok(Self {
             key: SigningKey::from_bytes(&arr),
         })
@@ -67,17 +67,17 @@ pub async fn build_key_provider() -> Result<Arc<dyn KeyProvider>> {
     let provider = std::env::var("KEY_PROVIDER").unwrap_or_else(|_| "env".to_string());
     match provider.as_str() {
         "local" => {
-            let allow = std::env::var("AEGIS_DEV_ALLOW_EPHEMERAL_KEY")
+            let allow = std::env::var("CATENAR_DEV_ALLOW_EPHEMERAL_KEY")
                 .map(|v| v == "1" || v.to_lowercase() == "true")
                 .unwrap_or(false);
             if !allow {
-                anyhow::bail!("KEY_PROVIDER=local generates a new key on every start and invalidates all receipts. Set KEY_PROVIDER=env and AEGIS_SIGNING_KEY_HEX, or AEGIS_DEV_ALLOW_EPHEMERAL_KEY=1 for dev only.");
+                anyhow::bail!("KEY_PROVIDER=local generates a new key on every start and invalidates all receipts. Set KEY_PROVIDER=env and CATENAR_SIGNING_KEY_HEX, or CATENAR_DEV_ALLOW_EPHEMERAL_KEY=1 for dev only.");
             }
             Ok(Arc::new(LocalKeyProvider::new_random()))
         }
         "env" => Ok(Arc::new(EnvKeyProvider::from_env()?)),
         "aws_kms" | "vault" => anyhow::bail!(
-            "KEY_PROVIDER={provider} requires Aegis Enterprise. Use KEY_PROVIDER=env with AEGIS_SIGNING_KEY_HEX for Open Core."
+            "KEY_PROVIDER={provider} requires Catenar Enterprise. Use KEY_PROVIDER=env with CATENAR_SIGNING_KEY_HEX for Open Core."
         ),
         _ => anyhow::bail!("unknown KEY_PROVIDER={provider}, expected local|env"),
     }

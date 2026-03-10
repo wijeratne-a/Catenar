@@ -1,8 +1,8 @@
-# Aegis Open Core
+# Catenar Open Core
 
-Aegis Community Edition (Open Core) supports:
+Catenar Community Edition (Open Core) supports:
 
-- **LocalKeyProvider**: Ephemeral key for development only (`KEY_PROVIDER=local` with `AEGIS_DEV_ALLOW_EPHEMERAL_KEY=1`)
-- **EnvKeyProvider**: Signing key from environment (`KEY_PROVIDER=env` with `AEGIS_SIGNING_KEY_HEX`)
+- **LocalKeyProvider**: Ephemeral key for development only (`KEY_PROVIDER=local` with `CATENAR_DEV_ALLOW_EPHEMERAL_KEY=1`)
+- **EnvKeyProvider**: Signing key from environment (`KEY_PROVIDER=env` with `CATENAR_SIGNING_KEY_HEX`)
 
-For **AWS KMS**, **HashiCorp Vault**, **Redis**, and **SIEM integrations**, see Aegis Enterprise. Contact for licensing.
+For **AWS KMS**, **HashiCorp Vault**, **Redis**, and **SIEM integrations**, see Catenar Enterprise. Contact for licensing.

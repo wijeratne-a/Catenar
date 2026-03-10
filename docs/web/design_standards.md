@@ -1,4 +1,4 @@
-# Aegis Web Design & Robustness Standards
+# Catenar Web Design & Robustness Standards
 
 ## 1. Visual Identity & UI/UX
 - **Theme**: Strictly use a "Developer-Centric" Dark Mode.

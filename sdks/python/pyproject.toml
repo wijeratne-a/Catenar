@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "aegis-sdk"
+name = "catenar-sdk"
 version = "0.1.0"
-description = "Aegis lightweight user-space SDK for proof-of-task tracing"
+description = "Catenar lightweight user-space SDK for proof-of-task tracing"
 requires-python = ">=3.10"
 dependencies = [
   "requests",

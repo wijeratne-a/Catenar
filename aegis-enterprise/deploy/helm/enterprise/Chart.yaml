@@ -1,6 +1,0 @@
-apiVersion: v2
-name: aegis-enterprise
-description: Aegis Enterprise - Redis, SIEM, and advanced integrations
-type: application
-version: 0.1.0
-appVersion: "0.1.0"

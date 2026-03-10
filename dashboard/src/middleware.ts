@@ -4,7 +4,7 @@ import { jwtVerify } from "jose";
 import { getToken } from "next-auth/jwt";
 import { ensureStartupValidation } from "@/lib/startup";
 
-const COOKIE_NAME = "aegis_session";
+const COOKIE_NAME = "catenar_session";
 
 function getSecret() {
   const secret = process.env.JWT_SECRET;

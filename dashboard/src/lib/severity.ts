@@ -39,7 +39,7 @@ export function classifyViolation(reason: string, violation_type?: string): Viol
   if (
     source.includes("missing_audit_trace") ||
     source.includes("missing audit trace") ||
-    source.includes("x-aegis-trace") ||
+    source.includes("x-catenar-trace") ||
     source.includes("audit")
   ) {
     return ViolationSeverity.Medium;

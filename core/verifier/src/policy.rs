@@ -97,7 +97,7 @@ impl RegoEngine {
             }
         }
         let mut engine = RegoEngineImpl::new();
-        engine.add_policy("aegis.rego".to_string(), source)?;
+        engine.add_policy("catenar.rego".to_string(), source)?;
         Ok(Self {
             engine,
             semaphore: Arc::new(Semaphore::new(64)),
@@ -143,7 +143,7 @@ impl PolicyEngine for RegoEngine {
         let input = serde_json::to_string(request)?;
         engine.set_input(RegoValue::from_json_str(&input)?);
 
-        let allow = engine.eval_allow_query("data.aegis.allow".to_string(), false);
+        let allow = engine.eval_allow_query("data.catenar.allow".to_string(), false);
         if allow {
             return Ok(PolicyDecision {
                 allow: true,
@@ -152,7 +152,7 @@ impl PolicyEngine for RegoEngine {
         }
 
         let reason = engine
-            .eval_query("data.aegis.reason".to_string(), false)
+            .eval_query("data.catenar.reason".to_string(), false)
             .ok()
             .and_then(|results| results.result.first().cloned())
             .and_then(|row| row.expressions.first().cloned())

@@ -26,47 +26,47 @@ function CopyButton({ text }: { text: string }) {
 const pythonSnippet = (policyHash: string) => `# Env: HTTP_PROXY=${PROXY_BASE} HTTPS_PROXY=${PROXY_BASE}
 # NO_PROXY=127.0.0.1,localhost  REQUESTS_CA_BUNDLE=./deploy/certs/ca.crt
 
-from aegis_sdk import Aegis
+from catenar_sdk import Catenar
 
-aegis = Aegis(base_url="${VERIFIER_BASE}", session_id="session-123", user_id="alice")
+catenar = Catenar(base_url="${VERIFIER_BASE}", session_id="session-123", user_id="alice")
 policy = {"public_values": {"max_spend": 1000, "restricted_endpoints": ["/admin"]}}
-aegis.init(policy=policy, domain="defi", public_values=policy["public_values"])
+catenar.init(policy=policy, domain="defi", public_values=policy["public_values"])
 
-@aegis.trace
+@catenar.trace
 def execute_swap(amount: float):
     return {"ok": True, "amount": amount}
 
 execute_swap(500)
-aegis.close()
+catenar.close()
 `;
 
-const pythonHttpxSnippet = `# Auto-trace HTTP with aegis_intercept (no decorators)
-# pip install httpx aegis-sdk
+const pythonHttpxSnippet = `# Auto-trace HTTP with catenar_intercept (no decorators)
+# pip install httpx catenar-sdk
 
-import aegis_intercept  # MUST import before httpx
-from aegis_intercept import get_aegis
+import catenar_intercept  # MUST import before httpx
+from catenar_intercept import get_catenar
 import httpx
 
-aegis = get_aegis()
-aegis.init(policy={"public_values": {"restricted_endpoints": ["/admin"]}}, domain="defi", public_values={"restricted_endpoints": ["/admin"]})
+catenar = get_catenar()
+catenar.init(policy={"public_values": {"restricted_endpoints": ["/admin"]}}, domain="defi", public_values={"restricted_endpoints": ["/admin"]})
 
 resp = httpx.get("https://api.example.com/data")  # Auto-traced via proxy
-aegis.wait_for_results(1)
-aegis.close()
+catenar.wait_for_results(1)
+catenar.close()
 `;
 
 const nodeSnippet = `// Env: HTTP_PROXY=${PROXY_BASE} HTTPS_PROXY=${PROXY_BASE}
 // NODE_EXTRA_CA_CERTS=./deploy/certs/ca.crt
 
-const { Aegis } = require("aegis-sdk");
+const { Catenar } = require("catenar-sdk");
 
 (async () => {
-  const aegis = new Aegis({ baseUrl: "${VERIFIER_BASE}" });
+  const catenar = new Catenar({ baseUrl: "${VERIFIER_BASE}" });
   const policy = { public_values: { max_spend: 1000, restricted_endpoints: ["/admin"] } };
-  await aegis.init(policy, "defi", policy.public_values);
+  await catenar.init(policy, "defi", policy.public_values);
 
-  aegis.trace("execute_swap", "/api/swap", { amount: 500 });
-  const res = await aegis.verify();
+  catenar.trace("execute_swap", "/api/swap", { amount: 500 });
+  const res = await catenar.verify();
   console.log(res);
 })();
 `;
@@ -79,7 +79,7 @@ WEBHOOK_SECRET=<min-32-chars-secret-shared-with-control-plane>
 const curlIngest = `# Sidecar receipt ingest (Control Plane)
 curl -X POST https://your-control-plane.example.com/api/receipts \\
   -H "Content-Type: application/json" \\
-  -H "X-Aegis-Ingest-Token: <SIDECAR_INGEST_TOKEN>" \\
+  -H "X-Catenar-Ingest-Token: <SIDECAR_INGEST_TOKEN>" \\
   -d '{"receipt_id":"...","policy_commitment":"...","trace_hash":"...","timestamp_ns":0,"signature":"...","public_key":"..."}'
 `;
 
@@ -91,7 +91,7 @@ export default function IntegrationsPage() {
     <div>
       <h1 className="text-2xl font-bold">Integrations</h1>
       <p className="mt-2 text-muted-foreground">
-        SDK snippets, webhook configuration, and API examples for connecting Aegis to your stack.
+        SDK snippets, webhook configuration, and API examples for connecting Catenar to your stack.
       </p>
 
       {!policyCommitment && (
@@ -136,7 +136,7 @@ export default function IntegrationsPage() {
                 <code>{pythonHttpxSnippet}</code>
               </pre>
               <p className="mt-2 text-sm text-muted-foreground">
-                Import aegis_intercept before httpx to auto-trace all HTTP calls through the proxy.
+                Import catenar_intercept before httpx to auto-trace all HTTP calls through the proxy.
               </p>
             </TabsContent>
             <TabsContent value="node" className="mt-4">
@@ -147,7 +147,7 @@ export default function IntegrationsPage() {
                 <code>{nodeSnippet}</code>
               </pre>
               <p className="mt-2 text-sm text-muted-foreground">
-                Set HTTP_PROXY, HTTPS_PROXY, NODE_EXTRA_CA_CERTS. Use aegis.trace for custom actions.
+                Set HTTP_PROXY, HTTPS_PROXY, NODE_EXTRA_CA_CERTS. Use catenar.trace for custom actions.
               </p>
             </TabsContent>
             <TabsContent value="webhook" className="mt-4">

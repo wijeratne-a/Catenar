@@ -1,4 +1,4 @@
-# Aegis Rego Policies
+# Catenar Rego Policies
 
 ## ReDoS Prevention
 

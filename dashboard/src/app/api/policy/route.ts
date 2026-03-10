@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 
 const PROXY_URL =
-  process.env.AEGIS_PROXY_URL || "http://127.0.0.1:8080";
+  process.env.CATENAR_PROXY_URL || "http://127.0.0.1:8080";
 
 export async function GET() {
   const session = await getSession();

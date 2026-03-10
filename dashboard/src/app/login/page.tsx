@@ -77,7 +77,7 @@ function LoginFormInner() {
     <div className="flex min-h-screen flex-col items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Sign in to Aegis Playground</CardTitle>
+          <CardTitle>Sign in to Catenar Playground</CardTitle>
           <CardDescription>
             Enter your credentials to access the Policy Builder and Verification Dashboard.
           </CardDescription>
@@ -141,7 +141,7 @@ export default function LoginPage() {
       <div className="flex min-h-screen flex-col items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>Sign in to Aegis Playground</CardTitle>
+            <CardTitle>Sign in to Catenar Playground</CardTitle>
             <CardDescription>Loading...</CardDescription>
           </CardHeader>
           <CardContent className="animate-pulse">

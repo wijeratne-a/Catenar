@@ -1,4 +1,4 @@
-# Aegis Demo Script
+# Catenar Demo Script
 
 ## Prerequisites
 
@@ -51,19 +51,19 @@ export REQUESTS_CA_BUNDLE=./deploy/certs/ca.crt  # or path to fetched ca.crt
 
 cd sdks/python
 python -c "
-from aegis_sdk import Aegis
+from catenar_sdk import Catenar
 
-aegis = Aegis(base_url='http://127.0.0.1:3000')
+catenar = Catenar(base_url='http://127.0.0.1:3000')
 policy = {'public_values': {'max_spend': 1000, 'restricted_endpoints': ['/admin']}}
-aegis.init(policy=policy, domain='defi', public_values=policy['public_values'])
+catenar.init(policy=policy, domain='defi', public_values=policy['public_values'])
 
-@aegis.trace
+@catenar.trace
 def execute_swap(amount: float):
     return {'ok': True, 'amount': amount}
 
 execute_swap(500)
-print(aegis.wait_for_results(1))
-aegis.close()
+print(catenar.wait_for_results(1))
+catenar.close()
 "
 ```
 
@@ -83,13 +83,13 @@ export NO_PROXY=127.0.0.1,localhost
 export NODE_EXTRA_CA_CERTS=./deploy/certs/ca.crt
 
 node -e "
-const { Aegis } = require('./dist/index.js');
+const { Catenar } = require('./dist/index.js');
 (async () => {
-  const aegis = new Aegis({ baseUrl: 'http://127.0.0.1:3000' });
+  const catenar = new Catenar({ baseUrl: 'http://127.0.0.1:3000' });
   const policy = { public_values: { max_spend: 1000, restricted_endpoints: ['/admin'] } };
-  await aegis.init(policy, 'defi', policy.public_values);
-  aegis.trace('execute_swap', '/api/swap', { amount: 500 });
-  const res = await aegis.verify();
+  await catenar.init(policy, 'defi', policy.public_values);
+  catenar.trace('execute_swap', '/api/swap', { amount: 500 });
+  const res = await catenar.verify();
   console.log('Verify result:', res);
 })();
 "
@@ -97,7 +97,7 @@ const { Aegis } = require('./dist/index.js');
 
 ## Stress Test (Zero-Config Intercept)
 
-Uses `aegis_intercept` to auto-trace all HTTP calls without decorators:
+Uses `catenar_intercept` to auto-trace all HTTP calls without decorators:
 
 ```bash
 # Install httpx for intercept
@@ -113,12 +113,12 @@ export REQUESTS_CA_BUNDLE=./deploy/certs/ca.crt
 python examples/stress_test_agent.py
 ```
 
-**Mock mode** (avoids DNS errors for fake domains): Set `STRESS_TEST_USE_MOCK=1` to run a local mock server. The proxy must have `AEGIS_STRESS_MOCK_PORT=9999` (set in Docker by default). For full policy testing with real blocked/allowed hosts, use real endpoints.
+**Mock mode** (avoids DNS errors for fake domains): Set `STRESS_TEST_USE_MOCK=1` to run a local mock server. The proxy must have `CATENAR_STRESS_MOCK_PORT=9999` (set in Docker by default). For full policy testing with real blocked/allowed hosts, use real endpoints.
 
 ## Developer Tools
 
 - **Debug Watch**: Tail proxy trace WAL in real time: `cargo run --manifest-path dev/cli/Cargo.toml -- debug watch`
-- **Chain Verify**: Verify BLAKE3 hash chain integrity of the **proxy's** trace log: `cargo run --manifest-path tools/aegis-verify/Cargo.toml -- ./data/proxy-trace.jsonl`. Note: This tool verifies the proxy's WAL (`./data/proxy-trace.jsonl`), not the Python SDK's local crash-recovery WAL (`aegis-trace-wal.jsonl`).
+- **Chain Verify**: Verify BLAKE3 hash chain integrity of the **proxy's** trace log: `cargo run --manifest-path tools/catenar-verify/Cargo.toml -- ./data/proxy-trace.jsonl`. Note: This tool verifies the proxy's WAL (`./data/proxy-trace.jsonl`), not the Python SDK's local crash-recovery WAL (`catenar-trace-wal.jsonl`).
 
 When using Docker, the proxy writes the trace to `./data/proxy-trace.jsonl` on the host (via volume mount). Run `make debug` or `make verify` from the repo root.
 
@@ -126,7 +126,7 @@ When using Docker, the proxy writes the trace to `./data/proxy-trace.jsonl` on t
 
 When Agent A calls Agent B, pass `parent_task_id` in trace entries so you can query the swarm lineage. Set `parent_task_id` to the parent agent's receipt ID when appending trace entries. Then query `GET /api/receipts?parent_task_id=X` to see receipts from child agents that were called by that parent.
 
-**Swarm demo:** `python examples/swarm_demo.py` — Agent A calls Agent B over HTTP with `X-Aegis-Parent-Task-Id`; script asserts lineage. Dashboard Receipts page has a lineage filter and displays `parent_task_ids`.
+**Swarm demo:** `python examples/swarm_demo.py` — Agent A calls Agent B over HTTP with `X-Catenar-Parent-Task-Id`; script asserts lineage. Dashboard Receipts page has a lineage filter and displays `parent_task_ids`.
 
 ## Webhook + Alerts
 

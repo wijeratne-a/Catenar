@@ -2,7 +2,7 @@ global:
   scrape_interval: 15s
 
 scrape_configs:
-  - job_name: aegis-proxy
+  - job_name: catenar-proxy
     static_configs:
       - targets:
           - proxy:8080

@@ -1,6 +1,6 @@
 # CISO Demo Script (15 Minutes)
 
-A scripted walkthrough for engineers to present Aegis to CISOs. Follow the steps in order; each has a suggested duration and talking point.
+A scripted walkthrough for engineers to present Catenar to CISOs. Follow the steps in order; each has a suggested duration and talking point.
 
 ## Prerequisites
 
@@ -19,7 +19,7 @@ flowchart LR
     subgraph Agent [AI Agent]
         A[Agent Code]
     end
-    subgraph Aegis [Aegis]
+    subgraph Catenar [Catenar]
         P[Proxy]
         V[Verifier]
     end
@@ -113,7 +113,7 @@ python examples/swarm_demo.py
 If the CISO asks about incident investigation:
 
 - **Incident page:** Dashboard → Alerts → click incident. Shows related receipts (same policy commitment, ±5 min window) and a "Verify Chain" section.
-- **Trace hash:** Run `make verify` or `cargo run --manifest-path tools/aegis-verify/Cargo.toml -- ./data/proxy-trace.jsonl` to verify BLAKE3 hash chain integrity of the proxy trace log.
+- **Trace hash:** Run `make verify` or `cargo run --manifest-path tools/catenar-verify/Cargo.toml -- ./data/proxy-trace.jsonl` to verify BLAKE3 hash chain integrity of the proxy trace log.
 - **Runbooks:** [docs/runbooks/](../runbooks/) for policy violation spikes, proxy unhealthy, verifier signing failure.
 
 ---

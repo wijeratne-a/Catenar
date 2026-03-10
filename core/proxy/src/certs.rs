@@ -31,7 +31,7 @@ impl RootCa {
         params.distinguished_name = rcgen::DistinguishedName::new();
         params.distinguished_name.push(
             rcgen::DnType::CommonName,
-            rcgen::DnValue::Utf8String("Aegis Proxy Root CA (BYO)".into()),
+            rcgen::DnValue::Utf8String("Catenar Proxy Root CA (BYO)".into()),
         );
         params.is_ca = IsCa::Ca(BasicConstraints::Constrained(0));
         params.key_usages = vec![
@@ -57,10 +57,10 @@ impl RootCa {
         params.distinguished_name = rcgen::DistinguishedName::new();
         params.distinguished_name.push(
             rcgen::DnType::CommonName,
-            rcgen::DnValue::Utf8String("Aegis Proxy Root CA".into()),
+            rcgen::DnValue::Utf8String("Catenar Proxy Root CA".into()),
         );
         params.subject_alt_names = vec![SanType::DnsName(rcgen::string::Ia5String::try_from(
-            "aegis-proxy-ca.local",
+            "catenar-proxy-ca.local",
         )?)];
         params.is_ca = IsCa::Ca(BasicConstraints::Constrained(0));
         params.key_usages = vec![
@@ -73,7 +73,7 @@ impl RootCa {
             .self_signed(&key)
             .context("failed to self-sign CA certificate")?;
 
-        info!("Aegis Proxy Root CA generated");
+        info!("Catenar Proxy Root CA generated");
         Ok(Self { cert, key })
     }
 

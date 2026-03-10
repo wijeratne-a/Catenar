@@ -131,7 +131,7 @@ export default function DashboardPage() {
     <div>
       <h1 className="text-2xl font-bold">Dashboard</h1>
       <p className="mt-2 text-muted-foreground">
-        Welcome to the Aegis Playground. Choose a tool to get started.
+        Welcome to the Catenar Playground. Choose a tool to get started.
       </p>
 
       <RecentInterceptions />

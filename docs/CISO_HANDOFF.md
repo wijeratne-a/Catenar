@@ -1,6 +1,6 @@
-# Aegis: CISO Handoff
+# Catenar: CISO Handoff
 
-One-page summary for engineers handing off Aegis to CISOs.
+One-page summary for engineers handing off Catenar to CISOs.
 
 ## Problem
 
@@ -8,7 +8,7 @@ AI agents make outbound calls to tools, APIs, and databases. Without inspection,
 
 ## Solution
 
-Aegis is a Zero Trust layer for AI agents. It sits between agents and external systems, inspects every outbound call, enforces policy, and produces cryptographically verifiable Proof-of-Task (PoT) receipts.
+Catenar is a Zero Trust layer for AI agents. It sits between agents and external systems, inspects every outbound call, enforces policy, and produces cryptographically verifiable Proof-of-Task (PoT) receipts.
 
 ## Key Capabilities
 
@@ -51,4 +51,4 @@ See [ENTERPRISE_BOUNDARY.md](ENTERPRISE_BOUNDARY.md) for full comparison.
 
 ## Enterprise Contact
 
-For production deployments, HSM signing, and HA: contact Aegis Enterprise.
+For production deployments, HSM signing, and HA: contact Catenar Enterprise.

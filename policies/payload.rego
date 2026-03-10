@@ -1,6 +1,6 @@
-# Request-level payload policy for Aegis proxy (A2T/A2A/A2D).
+# Request-level payload policy for Catenar proxy (A2T/A2A/A2D).
 # Evaluates decrypted HTTP request: method, path, host, body, headers, identity.
-package aegis.payload
+package catenar.payload
 
 default allow = true
 default reason = ""
@@ -36,32 +36,32 @@ suggestion = "Remove or redact SSN-like patterns from the request body before se
   regex.match("[0-9]{3}-[0-9]{2}-[0-9]{4}", body.text)
 }
 
-# A2A: when x-aegis-caller is present (agent-to-agent), require x-aegis-trace for audit chain.
+# A2A: when x-catenar-caller is present (agent-to-agent), require x-catenar-trace for audit chain.
 allow = false {
-  caller := input.headers["x-aegis-caller"]
+  caller := input.headers["x-catenar-caller"]
   caller != null
   caller != ""
-  trace := input.headers["x-aegis-trace"]
+  trace := input.headers["x-catenar-trace"]
   trace == null
 }
-reason = "A2A call requires x-aegis-trace header" {
-  caller := input.headers["x-aegis-caller"]
+reason = "A2A call requires x-catenar-trace header" {
+  caller := input.headers["x-catenar-caller"]
   caller != null
   caller != ""
-  trace := input.headers["x-aegis-trace"]
+  trace := input.headers["x-catenar-trace"]
   trace == null
 }
 violation_type = "missing_audit_trace" {
-  caller := input.headers["x-aegis-caller"]
+  caller := input.headers["x-catenar-caller"]
   caller != null
   caller != ""
-  trace := input.headers["x-aegis-trace"]
+  trace := input.headers["x-catenar-trace"]
   trace == null
 }
-suggestion = "Add x-aegis-trace header with the parent trace when making agent-to-agent calls" {
-  caller := input.headers["x-aegis-caller"]
+suggestion = "Add x-catenar-trace header with the parent trace when making agent-to-agent calls" {
+  caller := input.headers["x-catenar-caller"]
   caller != null
   caller != ""
-  trace := input.headers["x-aegis-trace"]
+  trace := input.headers["x-catenar-trace"]
   trace == null
 }

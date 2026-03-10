@@ -1,5 +1,5 @@
-# Wrapper to run the Aegis verifier from Cursor (or any) terminal on Windows.
-# Tries MSVC via VsDevCmd.bat, then GNU toolchain with optional MinGW auto-detect or AEGIS_MINGW.
+# Wrapper to run the Catenar verifier from Cursor (or any) terminal on Windows.
+# Tries MSVC via VsDevCmd.bat, then GNU toolchain with optional MinGW auto-detect or CATENAR_MINGW.
 # Run from repo root: .\dev\scripts\windows\run-verifier.ps1
 $ErrorActionPreference = "Stop"
 $scriptDir = if ($PSScriptRoot) { (Get-Item $PSScriptRoot).FullName } else { (Get-Location).Path }
@@ -39,7 +39,7 @@ if ($vsBatch -and (Test-Path -LiteralPath $vsBatch)) {
         try { & rustup toolchain install stable-x86_64-pc-windows-gnu 2>&1 | Out-Null } catch { }
         $ErrorActionPreference = $errPref
         # Prepend MinGW/binutils path so dlltool.exe and gcc are found.
-        $mingwDir = $env:AEGIS_MINGW
+        $mingwDir = $env:CATENAR_MINGW
         if (-not $mingwDir) {
             $mingwCandidates = @(
                 "C:\msys64\ucrt64\bin", "C:\msys64\mingw64\bin", "C:\msys64\mingw32\bin",
@@ -66,7 +66,7 @@ if ($vsBatch -and (Test-Path -LiteralPath $vsBatch)) {
     Write-Host ""
     Write-Host "If you see 'link.exe not found' or 'The system cannot find the file specified':" -ForegroundColor Yellow
     Write-Host "  1. Open Visual Studio Installer, modify Build Tools, and ensure 'Desktop development with C++' is installed." -ForegroundColor Yellow
-    Write-Host "  2. Or use GNU: install MinGW-w64 with binutils (e.g. MSYS2: pacman -S mingw-w64-ucrt-x86_64-toolchain). If not in C:\msys64, set AEGIS_MINGW to the bin folder, then run this script again." -ForegroundColor Yellow
+    Write-Host "  2. Or use GNU: install MinGW-w64 with binutils (e.g. MSYS2: pacman -S mingw-w64-ucrt-x86_64-toolchain). If not in C:\msys64, set CATENAR_MINGW to the bin folder, then run this script again." -ForegroundColor Yellow
     exit $msvcExit
 }
 if ($scriptExists) {

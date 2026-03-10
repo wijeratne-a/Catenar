@@ -1,0 +1,99 @@
+{
+  "id": null,
+  "uid": "catenar-violations",
+  "title": "Catenar CISO Overview",
+  "tags": ["catenar", "security", "demo", "ciso"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 2,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Policy Violations (Blocked)",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "catenar_proxy_blocked_total",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Requests Allowed",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "catenar_proxy_requests_total - catenar_proxy_blocked_total",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Timeouts",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "catenar_proxy_timeout_total",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Policy Eval p95 (ms)",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "catenar_proxy_policy_eval_p95_ms",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Policy Violations Over Time",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(catenar_proxy_blocked_total[5m])",
+          "legendFormat": "Violations (5m)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Requests Over Time",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(catenar_proxy_requests_total[5m])",
+          "legendFormat": "Requests (5m)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    }
+  ]
+}

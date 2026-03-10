@@ -1,0 +1,30 @@
+{{- if .Values.proxy.fluentBit.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: catenar-proxy-fluent-bit-config
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush      1
+        Daemon     Off
+        Log_Level  info
+
+    [INPUT]
+        Name              tail
+        Path              {{ .Values.proxy.traceWalPath }}
+        Refresh_Interval  2
+        Skip_Long_Lines   On
+        Mem_Buf_Limit     10MB
+        Tag               catenar.proxy.wal
+
+    [OUTPUT]
+        Name        forward
+        Match       catenar.proxy.wal
+        Host        {{ .Values.proxy.fluentBit.output.host }}
+        Port        {{ .Values.proxy.fluentBit.output.port }}
+        tls         {{ ternary "On" "Off" .Values.proxy.fluentBit.output.tls }}
+    {{- if .Values.proxy.fluentBit.output.sharedKey }}
+        Shared_Key  {{ .Values.proxy.fluentBit.output.sharedKey }}
+    {{- end }}
+{{- end }}

@@ -3,40 +3,6 @@
 version = 4
 
 [[package]]
-name = "aegis-api"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum 0.8.8",
- "base64 0.22.1",
- "blake3",
- "chrono",
- "constant_time_eq",
- "dashmap",
- "ed25519-dalek",
- "hex",
- "hmac",
- "httpmock",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
- "rand 0.8.5",
- "regorus",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
- "tower-http",
- "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -543,6 +509,40 @@ name = "bytes"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
+
+[[package]]
+name = "catenar-api"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum 0.8.8",
+ "base64 0.22.1",
+ "blake3",
+ "chrono",
+ "constant_time_eq",
+ "dashmap",
+ "ed25519-dalek",
+ "hex",
+ "hmac",
+ "httpmock",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "rand 0.8.5",
+ "regorus",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+ "uuid",
+]
 
 [[package]]
 name = "cc"

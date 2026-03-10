@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { auth as getOidcSession } from "@/auth";
 import { resolveOrgFromUsername, resolveRoleFromUsername } from "./auth-claims";
 
-const COOKIE_NAME = "aegis_session";
+const COOKIE_NAME = "catenar_session";
 const MAX_AGE = 60 * 60 * 24; // 24 hours
 
 function getSecret() {

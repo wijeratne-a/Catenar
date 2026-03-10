@@ -29,10 +29,10 @@ function getPerOrgTokens(): Record<string, string> | null {
 }
 
 function isAuthorizedSidecar(request: NextRequest): AuthResult & { orgId?: string } {
-  const token = request.headers.get("x-aegis-ingest-token") ?? "";
+  const token = request.headers.get("x-catenar-ingest-token") ?? "";
   const orgFromHeader =
-    request.headers.get("x-aegis-org-id") ??
-    request.headers.get("x-aegis-tenant-id") ??
+    request.headers.get("x-catenar-org-id") ??
+    request.headers.get("x-catenar-tenant-id") ??
     null;
 
   const perOrg = getPerOrgTokens();
@@ -87,14 +87,14 @@ function getOrgIdFromIngestHeaders(request: NextRequest, token: string | null): 
     if (orgIdFromToken != null) return orgIdFromToken;
   }
   const orgId =
-    request.headers.get("x-aegis-org-id") ??
-    request.headers.get("x-aegis-tenant-id") ??
-    request.headers.get("x-aegis-user-id");
+    request.headers.get("x-catenar-org-id") ??
+    request.headers.get("x-catenar-tenant-id") ??
+    request.headers.get("x-catenar-user-id");
   return orgId?.trim() || "default";
 }
 
 function getReceiptRateLimitKey(request: NextRequest, orgId: string): string {
-  const token = request.headers.get("x-aegis-ingest-token");
+  const token = request.headers.get("x-catenar-ingest-token");
   if (token) {
     const hash = createHash("sha256").update(token).digest("hex").slice(0, 16);
     return `receipt:${orgId}:${hash}`;
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: msg }, { status: auth.status });
   }
 
-  const token = request.headers.get("x-aegis-ingest-token");
+  const token = request.headers.get("x-catenar-ingest-token");
   const orgId =
     auth.orgId ?? getOrgIdFromIngestHeaders(request, token);
   const rateKey = getReceiptRateLimitKey(request, orgId);

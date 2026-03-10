@@ -1,4 +1,4 @@
-# Aegis Security & Performance Audit
+# Catenar Security & Performance Audit
 
 **Auditor stance:** Zero-trust AppSec / Principal Systems Architect. Every user is malicious, every input is poisoned, every millisecond of latency is a failure.
 
@@ -13,9 +13,9 @@ The following 16 findings from the Senior AppSec line-by-line audit were fixed v
 | ID | Severity | Finding | Fix |
 |----|----------|---------|-----|
 | 1.1 | Critical | SSRF via DNS rebinding / authority bypass | DNS resolution check before forwarding; reject if any resolved IP is internal/private |
-| 1.2 | High | Header injection via identity values | `sanitize_header_value()` rejects control bytes before x-aegis-caller insertion |
+| 1.2 | High | Header injection via identity values | `sanitize_header_value()` rejects control bytes before x-catenar-caller insertion |
 | 1.3 | Medium | SQL injection in SqlitePolicyStore | Already mitigated (parameterized queries) |
-| 1.4 | Medium | Hash chaining lacks domain separation | `compute_chain_hash` uses `blake3::Hasher::new_derive_key("aegis.trace.chain.v1")` + length prefixes |
+| 1.4 | Medium | Hash chaining lacks domain separation | `compute_chain_hash` uses `blake3::Hasher::new_derive_key("catenar.trace.chain.v1")` + length prefixes |
 | 2.1 | Critical | Demo mode auth bypass (ALLOW_DEMO_LOGIN=true) | Requires exact `dangerous_insecure_demo_mode`; blocks in NODE_ENV=production |
 | 2.2 | High | Task token secret in logs | Documented; zeroize pattern recommended for future |
 | 2.3 | Medium | Webhook secret weak/absent | Validate WEBHOOK_SECRET ≥ 32 chars at startup; disable webhook if invalid |
@@ -38,7 +38,7 @@ The following 12 findings were fixed in a coordinated security sprint:
 
 | Finding | Fix |
 |---------|-----|
-| **F1** Ephemeral LocalKeyProvider invalidates receipts on restart | Guard: `KEY_PROVIDER=local` now requires `AEGIS_DEV_ALLOW_EPHEMERAL_KEY=1` |
+| **F1** Ephemeral LocalKeyProvider invalidates receipts on restart | Guard: `KEY_PROVIDER=local` now requires `CATENAR_DEV_ALLOW_EPHEMERAL_KEY=1` |
 | **F2** Demo login accepts any password | Require `DEMO_PASSWORD` (min 16 chars); `timingSafeEqual` comparison |
 | **F3** Identity headers from client used in Rego (policy bypass) | `get_identity()` now returns empty `IdentityContext`; no client header trust |
 | **F4** X-Forwarded-For spoofing bypasses rate limits | `getTrustedIp()` uses last XFF when `TRUST_PROXY=true`; else x-real-ip/request.ip |
@@ -51,7 +51,7 @@ The following 12 findings were fixed in a coordinated security sprint:
 | **F11** Next.js register not forwarding to verifier | POST to `VERIFIER_URL/v1/register` with API key when set |
 | **F12** Vault public_key returned as UTF-8 bytes | Base64-decode Vault Transit public_key before use |
 
-**New env vars:** `DEMO_PASSWORD`, `TRUST_PROXY`, `AEGIS_DEV_ALLOW_EPHEMERAL_KEY`, `VERIFIER_URL`, `VERIFIER_API_KEY`
+**New env vars:** `DEMO_PASSWORD`, `TRUST_PROXY`, `CATENAR_DEV_ALLOW_EPHEMERAL_KEY`, `VERIFIER_URL`, `VERIFIER_API_KEY`
 
 ---
 
@@ -64,7 +64,7 @@ The following 12 findings were fixed in a coordinated security sprint:
 | /v1/receipt accepts arbitrary JSON, no-op | **Deferred** | Document as deprecated/no-op; receipt ingest via Next.js control plane |
 | Login simulated auth, no rate limit | **Fixed** | ALLOW_DEMO_LOGIN flag; 5/min rate limit per IP; production must use real IdP |
 | GET /api/receipts returns all receipts | **Fixed** | tenant_id scoping; filter by session.username |
-| AppError exposes internal messages | **Fixed** | AEGIS_DEBUG controls exposure; generic "Internal error" in production |
+| AppError exposes internal messages | **Fixed** | CATENAR_DEBUG controls exposure; generic "Internal error" in production |
 | Verifier no body size limit | **Fixed** | RequestBodyLimitLayer 1 MB |
 | Verifier CORS .unwrap() on parse | **Fixed** | .expect("hardcoded origin") |
 | Proxy CONNECT SSRF | **Fixed** | is_internal_or_private(); 403 for localhost, private IPs, link-local |
@@ -100,7 +100,7 @@ The following 12 findings were fixed in a coordinated security sprint:
 function isAuthorizedSidecar(request: NextRequest): boolean {
   const expected = process.env.SIDECAR_INGEST_TOKEN;
   if (!expected || expected.length < 32) return false; // require explicit secret
-  const token = request.headers.get("x-aegis-ingest-token");
+  const token = request.headers.get("x-catenar-ingest-token");
   return token != null && crypto.timingSafeEqual(Buffer.from(expected, "utf8"), Buffer.from(token, "utf8"));
 }
 ```
@@ -317,7 +317,7 @@ The active provider is selected at startup via the `KEY_PROVIDER` env var in `bu
 | Provider | `KEY_PROVIDER` value | Description | Env Vars |
 |----------|---------------------|-------------|----------|
 | `LocalKeyProvider` | `local` (default) | Generates a random Ed25519 keypair in-process on each startup. Suitable for development and demos. Keys are ephemeral and not persisted. | None |
-| `EnvKeyProvider` | `env` | Loads a static Ed25519 private key from a hex-encoded env var. Suitable for staging or single-instance deployments where the key can be injected via secret management. | `AEGIS_SIGNING_KEY_HEX` (32-byte hex) |
+| `EnvKeyProvider` | `env` | Loads a static Ed25519 private key from a hex-encoded env var. Suitable for staging or single-instance deployments where the key can be injected via secret management. | `CATENAR_SIGNING_KEY_HEX` (32-byte hex) |
 
 ### Planned Implementations (Stubs)
 

@@ -1,6 +1,6 @@
-# Aegis
+# Catenar
 
-Zero Trust Network Access (ZTNA) proxy and cryptographic verifier for AI agents. Aegis inspects and enforces policy on outbound agent traffic, producing cryptographically verifiable Proof-of-Task receipts.
+Zero Trust Network Access (ZTNA) proxy and cryptographic verifier for AI agents. Catenar inspects and enforces policy on outbound agent traffic, producing cryptographically verifiable Proof-of-Task receipts.
 
 ## Architecture
 
@@ -52,8 +52,8 @@ See [docs/demo/getting-started.md](docs/demo/getting-started.md) for full demo i
 | Proxy | [core/proxy](core/proxy) | Forward proxy with TLS MITM, payload parsing, Rego policy |
 | Verifier | [core/verifier](core/verifier) | Cryptographic verification and receipt signing |
 | Crypto | [core/crypto](core/crypto) | Key generation and manifest signing (dev utility) |
-| Python SDK | [sdks/python](sdks/python) | Aegis Proof-of-Task SDK for Python agents |
-| Node.js SDK | [sdks/nodejs](sdks/nodejs) | Aegis Proof-of-Task SDK for Node.js |
+| Python SDK | [sdks/python](sdks/python) | Catenar Proof-of-Task SDK for Python agents |
+| Node.js SDK | [sdks/nodejs](sdks/nodejs) | Catenar Proof-of-Task SDK for Node.js |
 | Dashboard | [dashboard](dashboard) | Next.js control plane UI |
 
 ## Developer Tools
@@ -61,15 +61,15 @@ See [docs/demo/getting-started.md](docs/demo/getting-started.md) for full demo i
 | Tool | Command | Description |
 |------|---------|-------------|
 | Debug Watch | `make debug` or `cargo run --manifest-path dev/cli/Cargo.toml -- debug watch` | Tail proxy trace WAL and show policy decisions, BLAKE3 hashes in real time |
-| Chain Verify | `make verify` or `cargo run --manifest-path tools/aegis-verify/Cargo.toml -- ./data/proxy-trace.jsonl` | Verify BLAKE3 hash chain. Run against proxy WAL (`./data/proxy-trace.jsonl`), not SDK WAL (`aegis-trace-wal.jsonl`). |
+| Chain Verify | `make verify` or `cargo run --manifest-path tools/catenar-verify/Cargo.toml -- ./data/proxy-trace.jsonl` | Verify BLAKE3 hash chain. Run against proxy WAL (`./data/proxy-trace.jsonl`), not SDK WAL (`catenar-trace-wal.jsonl`). |
 
 ## Examples
 
-- **[examples/stress_test_agent.py](examples/stress_test_agent.py)**: Stress test with 100+ concurrent HTTP calls. Uses `aegis_intercept` for zero-config tracing. Run with proxy and verifier: `HTTP_PROXY=http://127.0.0.1:8080 python examples/stress_test_agent.py`
+- **[examples/stress_test_agent.py](examples/stress_test_agent.py)**: Stress test with 100+ concurrent HTTP calls. Uses `catenar_intercept` for zero-config tracing. Run with proxy and verifier: `HTTP_PROXY=http://127.0.0.1:8080 python examples/stress_test_agent.py`
 
 ## Open Core
 
-**Aegis Community Edition** is open source under the [Apache 2.0 License](LICENSE). See [docs/OPEN_CORE.md](docs/OPEN_CORE.md) for supported key providers (local, env) and what is available in Aegis Enterprise (KMS, Vault, Redis, SIEM).
+**Catenar Community Edition** is open source under the [Apache 2.0 License](LICENSE). See [docs/OPEN_CORE.md](docs/OPEN_CORE.md) for supported key providers (local, env) and what is available in Catenar Enterprise (KMS, Vault, Redis, SIEM).
 
 ## Documentation
 

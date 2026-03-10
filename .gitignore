@@ -35,8 +35,9 @@ dashboard/tsconfig.tsbuildinfo
 data/
 deploy/certs/
 policy.json
-sdks/python/aegis-trace-wal.jsonl
-aegis-trace-wal.jsonl
+sdks/python/catenar-trace-wal.jsonl
+catenar-trace-wal.jsonl
+**/catenar-trace-wal.jsonl
 **/aegis-trace-wal.jsonl
 core/verifier/policies.db
 *.sqlite3

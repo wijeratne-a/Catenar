@@ -1,4 +1,4 @@
-# Aegis Documentation
+# Catenar Documentation
 
 ## Architecture & Design
 

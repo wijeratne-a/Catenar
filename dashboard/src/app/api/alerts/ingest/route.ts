@@ -12,7 +12,7 @@ function validateWebhookSignature(request: NextRequest, body: Buffer): boolean {
   if (!secret || secret.length < 32) {
     return false;
   }
-  const signature = request.headers.get("x-aegis-signature");
+  const signature = request.headers.get("x-catenar-signature");
   if (!signature || !signature.startsWith("sha256=")) {
     return false;
   }

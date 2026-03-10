@@ -1,4 +1,4 @@
-//! Aegis Verifier API library. Run the server with `run(key_provider)`.
+//! Catenar Verifier API library. Run the server with `run(key_provider)`.
 
 use std::{
     cell::Cell,
@@ -256,7 +256,7 @@ fn build_cors_layer() -> CorsLayer {
     }
 }
 
-/// Run the Aegis Verifier API server with the given key provider.
+/// Run the Catenar Verifier API server with the given key provider.
 pub async fn run(key_provider: Arc<dyn KeyProvider>) -> anyhow::Result<()> {
     telemetry::init_telemetry()?;
 
@@ -308,7 +308,7 @@ pub async fn run(key_provider: Arc<dyn KeyProvider>) -> anyhow::Result<()> {
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    info!("[aegis-api] listening on http://{addr}");
+    info!("[catenar-api] listening on http://{addr}");
 
     axum::serve(
         listener,
@@ -321,9 +321,9 @@ pub async fn run(key_provider: Arc<dyn KeyProvider>) -> anyhow::Result<()> {
 
 async fn shutdown_signal() {
     if let Err(error) = tokio::signal::ctrl_c().await {
-        eprintln!("[aegis-api] failed to listen for shutdown signal: {error}");
+        eprintln!("[catenar-api] failed to listen for shutdown signal: {error}");
     }
-    info!("[aegis-api] shutdown signal received");
+    info!("[catenar-api] shutdown signal received");
 }
 
 async fn register_handler(
@@ -347,8 +347,8 @@ async fn register_handler(
         .filter(|v| !v.is_empty())
         .map(|secret| {
             let payload = AgentTaskToken {
-                agent_id: get_header_or_default(&headers, "x-aegis-agent-id", DEFAULT_AGENT_ID),
-                task_id: get_header_or_default(&headers, "x-aegis-task-id", DEFAULT_TASK_ID),
+                agent_id: get_header_or_default(&headers, "x-catenar-agent-id", DEFAULT_AGENT_ID),
+                task_id: get_header_or_default(&headers, "x-catenar-task-id", DEFAULT_TASK_ID),
                 policy_commitment: commitment.clone(),
                 exp: chrono::Utc::now().timestamp() + task_token_ttl_secs(),
             };
@@ -380,7 +380,7 @@ async fn verify_handler(
             message: e,
         })?;
     let agent_id = headers
-        .get("x-aegis-agent-id")
+        .get("x-catenar-agent-id")
         .and_then(|v| v.to_str().ok())
         .map(str::trim)
         .filter(|v| !v.is_empty());
@@ -395,10 +395,10 @@ async fn verify_handler(
         .await
         .map_err(|e| AppError::internal(format!("verification failed: {e}")))?;
     if let Err(err) = report_receipt_if_configured(&state.http_client, &response).await {
-        eprintln!("[aegis-api] failed to report receipt: {err}");
+        eprintln!("[catenar-api] failed to report receipt: {err}");
     }
     if let Err(err) = notify_policy_violation_if_configured(&state.http_client, &request, &response).await {
-        eprintln!("[aegis-api] failed to send policy violation webhook: {err}");
+        eprintln!("[catenar-api] failed to send policy violation webhook: {err}");
     }
     Ok(Json(response))
 }
@@ -423,7 +423,7 @@ async fn list_agents_handler(
     headers: HeaderMap,
 ) -> AppResult<Json<Vec<AgentRegistration>>> {
     let role = headers
-        .get("x-aegis-role")
+        .get("x-catenar-role")
         .and_then(|v| v.to_str().ok())
         .map(str::trim)
         .unwrap_or("");

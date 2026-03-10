@@ -107,8 +107,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Optional: sync restricted_endpoints to proxy when AEGIS_PROXY_URL is set
-    const proxyUrl = process.env.AEGIS_PROXY_URL?.replace(/\/$/, "");
+    // Optional: sync restricted_endpoints to proxy when CATENAR_PROXY_URL is set
+    const proxyUrl = process.env.CATENAR_PROXY_URL?.replace(/\/$/, "");
     if (proxyUrl && parsed.data.public_values?.restricted_endpoints?.length) {
       try {
         const proxyRes = await fetch(`${proxyUrl}/policy`, {

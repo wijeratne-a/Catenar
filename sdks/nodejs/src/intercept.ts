@@ -1,6 +1,6 @@
 /**
- * Aegis intercept module - monkey-patches http.request, https.request, and axios
- * to emit trace entries to the Aegis verifier.
+ * Catenar intercept module - monkey-patches http.request, https.request, and axios
+ * to emit trace entries to the Catenar verifier.
  *
  * Import this module before any HTTP client to enable automatic tracing.
  * Set HTTP_PROXY and HTTPS_PROXY for proxy routing.
@@ -8,11 +8,11 @@
 
 import * as http from "http";
 import * as https from "https";
-import { Aegis } from "./index";
+import { Catenar } from "./index";
 import type { ClientRequest, IncomingMessage, RequestOptions } from "http";
 
-const AEGIS_BASE_URL = process.env.AEGIS_BASE_URL ?? "http://127.0.0.1:3000";
-const DEFAULT_PROXY = process.env.AEGIS_PROXY ?? "http://127.0.0.1:8080";
+const CATENAR_BASE_URL = process.env.CATENAR_BASE_URL ?? "http://127.0.0.1:3000";
+const DEFAULT_PROXY = process.env.CATENAR_PROXY ?? "http://127.0.0.1:8080";
 
 // Set proxy from env if not already set
 if (!process.env.HTTP_PROXY && !process.env.http_proxy) {
@@ -22,17 +22,17 @@ if (!process.env.HTTPS_PROXY && !process.env.https_proxy) {
   process.env.HTTPS_PROXY = DEFAULT_PROXY;
 }
 
-let aegisInstance: Aegis | null = null;
+let catenarInstance: Catenar | null = null;
 
-function getAegis(): Aegis {
-  if (!aegisInstance) {
-    aegisInstance = new Aegis({ baseUrl: AEGIS_BASE_URL });
+function getCatenar(): Catenar {
+  if (!catenarInstance) {
+    catenarInstance = new Catenar({ baseUrl: CATENAR_BASE_URL });
   }
-  return aegisInstance;
+  return catenarInstance;
 }
 
-export function getAegisInstance(): Aegis {
-  return getAegis();
+export function getCatenarInstance(): Catenar {
+  return getCatenar();
 }
 
 function buildUrl(options: string | RequestOptions | URL, defaultProtocol = "https:"): string {
@@ -77,7 +77,7 @@ function wrapRequest(
           const statusCode = res.statusCode ?? 0;
           const elapsedMs = Date.now() - start;
           try {
-            getAegis().trace("api_call", url, {
+            getCatenar().trace("api_call", url, {
               details: {
                 method,
                 url,
@@ -99,7 +99,7 @@ function wrapRequest(
         const statusCode = res.statusCode ?? 0;
         const elapsedMs = Date.now() - start;
         try {
-          getAegis().trace("api_call", url, {
+          getCatenar().trace("api_call", url, {
             details: {
               method,
               url,
@@ -114,7 +114,7 @@ function wrapRequest(
       req.on("error", () => {
         const elapsedMs = Date.now() - start;
         try {
-          getAegis().trace("api_call", url, {
+          getCatenar().trace("api_call", url, {
             details: {
               method,
               url,
@@ -160,7 +160,7 @@ function patchFetch(): void {
         const statusCode = res.status;
         const elapsedMs = Date.now() - start;
         try {
-          getAegis().trace("api_call", url, {
+          getCatenar().trace("api_call", url, {
             details: {
               method,
               url,
@@ -176,7 +176,7 @@ function patchFetch(): void {
       (err) => {
         const elapsedMs = Date.now() - start;
         try {
-          getAegis().trace("api_call", url, {
+          getCatenar().trace("api_call", url, {
             details: {
               method,
               url,
@@ -203,7 +203,7 @@ function patchAxios(): void {
 
     axios.interceptors.request.use(
       (config: { method?: string; url?: string }) => {
-        (config as Record<string, unknown>).__aegis_start = Date.now();
+        (config as Record<string, unknown>).__catenar_start = Date.now();
         return config;
       },
       (err: unknown) => Promise.reject(err)
@@ -212,14 +212,14 @@ function patchAxios(): void {
     axios.interceptors.response.use(
       (response: { config?: { url?: string; method?: string }; status?: number }) => {
         const config = response.config;
-        const start = (config as Record<string, unknown>)?.__aegis_start as number | undefined;
+        const start = (config as Record<string, unknown>)?.__catenar_start as number | undefined;
         if (config && typeof start === "number") {
           const url = config.url ?? "";
           const method = (config.method ?? "get").toUpperCase();
           const statusCode = response.status ?? 200;
           const elapsedMs = Date.now() - start;
           try {
-            getAegis().trace("api_call", url, {
+            getCatenar().trace("api_call", url, {
               details: {
                 method,
                 url,
@@ -235,13 +235,13 @@ function patchAxios(): void {
       },
       (err: { config?: { url?: string; method?: string }; message?: string }) => {
         const config = err?.config;
-        const start = config ? (config as Record<string, unknown>).__aegis_start as number | undefined : undefined;
+        const start = config ? (config as Record<string, unknown>).__catenar_start as number | undefined : undefined;
         if (config && typeof start === "number") {
           const url = config.url ?? "";
           const method = (config.method ?? "get").toUpperCase();
           const elapsedMs = Date.now() - start;
           try {
-            getAegis().trace("api_call", url, {
+            getCatenar().trace("api_call", url, {
               details: {
                 method,
                 url,

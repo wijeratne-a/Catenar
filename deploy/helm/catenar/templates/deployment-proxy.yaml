@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catenar-proxy
+spec:
+  replicas: {{ .Values.proxy.replicas }}
+  selector:
+    matchLabels:
+      app: catenar-proxy
+  template:
+    metadata:
+      labels:
+        app: catenar-proxy
+    spec:
+      securityContext:
+        {{- toYaml .Values.proxy.podSecurityContext | nindent 8 }}
+      containers:
+        - name: proxy
+          image: {{ .Values.proxy.image }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            {{- toYaml .Values.proxy.containerSecurityContext | nindent 12 }}
+          ports:
+            - containerPort: {{ .Values.proxy.port }}
+          env:
+            - name: ENFORCE_MODE
+              value: {{ .Values.proxy.enforceMode | quote }}
+            - name: POLICY_PATH
+              value: /etc/catenar/policy.json
+            - name: VERIFIER_URL
+              value: {{ printf "%s://catenar-verifier:%v" (ternary "https" "http" .Values.verifier.tls.enabled) .Values.verifier.port | quote }}
+            - name: TRACE_WAL_PATH
+              value: {{ .Values.proxy.traceWalPath | quote }}
+            - name: CATENAR_LOG_FORMAT
+              value: "json"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otel.endpoint | quote }}
+            {{- if .Values.verifier.tls.enabled }}
+            - name: VERIFIER_TLS_CA_PATH
+              value: /etc/catenar/verifier-tls/ca.crt
+            - name: VERIFIER_TLS_CERT_PATH
+              value: /etc/catenar/verifier-client-tls/tls.crt
+            - name: VERIFIER_TLS_KEY_PATH
+              value: /etc/catenar/verifier-client-tls/tls.key
+            {{- end }}
+            {{- if .Values.proxy.externalCa.secretName }}
+            - name: CATENAR_CA_CERT_PATH
+              value: /etc/catenar/ca/tls.crt
+            - name: CATENAR_CA_KEY_PATH
+              value: /etc/catenar/ca/tls.key
+            {{- end }}
+          volumeMounts:
+            - name: policy-json
+              mountPath: /etc/catenar
+            - name: proxy-wal
+              mountPath: /var/lib/catenar
+            - name: proxy-tmp
+              mountPath: /tmp
+            {{- if .Values.verifier.tls.enabled }}
+            - name: verifier-tls-ca
+              mountPath: /etc/catenar/verifier-tls
+              readOnly: true
+            - name: verifier-tls-client
+              mountPath: /etc/catenar/verifier-client-tls
+              readOnly: true
+            {{- end }}
+            {{- if .Values.proxy.externalCa.secretName }}
+            - name: external-ca
+              mountPath: /etc/catenar/ca
+              readOnly: true
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.proxy.port }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.proxy.port }}
+          resources:
+            {{- toYaml .Values.proxy.resources | nindent 12 }}
+        {{- if .Values.proxy.fluentBit.enabled }}
+        - name: fluent-bit
+          image: {{ .Values.proxy.fluentBit.image }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            {{- toYaml .Values.proxy.fluentBit.containerSecurityContext | nindent 12 }}
+          args:
+            - -c
+            - /fluent-bit/etc/fluent-bit.conf
+          volumeMounts:
+            - name: proxy-wal
+              mountPath: /var/lib/catenar
+              readOnly: true
+            - name: fluent-bit-config
+              mountPath: /fluent-bit/etc
+              readOnly: true
+            - name: proxy-tmp
+              mountPath: /tmp
+          resources:
+            {{- toYaml .Values.proxy.fluentBit.resources | nindent 12 }}
+        {{- end }}
+      volumes:
+        - name: policy-json
+          configMap:
+            name: catenar-policy-config
+            items:
+              - key: policy.json
+                path: policy.json
+        - name: proxy-wal
+          {{- if .Values.proxy.wal.persistentVolume.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.proxy.wal.persistentVolume.claimName | quote }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: proxy-tmp
+          emptyDir: {}
+        {{- if .Values.verifier.tls.enabled }}
+        - name: verifier-tls-ca
+          secret:
+            secretName: {{ required "verifier.tls.secretName is required when verifier.tls.enabled=true" .Values.verifier.tls.secretName }}
+        - name: verifier-tls-client
+          secret:
+            secretName: {{ required "verifier.tls.clientCertSecretName is required when verifier.tls.enabled=true" .Values.verifier.tls.clientCertSecretName }}
+        {{- end }}
+        {{- if .Values.proxy.fluentBit.enabled }}
+        - name: fluent-bit-config
+          configMap:
+            name: catenar-proxy-fluent-bit-config
+        {{- end }}
+        {{- if .Values.proxy.externalCa.secretName }}
+        - name: external-ca
+          secret:
+            secretName: {{ .Values.proxy.externalCa.secretName }}
+        {{- end }}

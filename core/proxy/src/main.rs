@@ -144,8 +144,8 @@ async fn main() -> Result<()> {
     });
 
     let root_ca = match (
-        std::env::var("AEGIS_CA_CERT_PATH"),
-        std::env::var("AEGIS_CA_KEY_PATH"),
+        std::env::var("CATENAR_CA_CERT_PATH"),
+        std::env::var("CATENAR_CA_KEY_PATH"),
     ) {
         (Ok(cert_path), Ok(key_path)) => {
             let cert_pem = fs::read_to_string(&cert_path)
@@ -157,7 +157,7 @@ async fn main() -> Result<()> {
         _ => RootCa::generate()?,
     };
     let ca_pem = root_ca.export_pem();
-    if let Ok(ca_path) = std::env::var("AEGIS_CA_PATH") {
+    if let Ok(ca_path) = std::env::var("CATENAR_CA_PATH") {
         if let Some(parent) = std::path::Path::new(&ca_path).parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -265,7 +265,7 @@ async fn main() -> Result<()> {
                     let entry = HeartbeatLogEntry {
                         timestamp_ns: chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default(),
                         action: "heartbeat".to_string(),
-                        target: "aegis-proxy-degraded".to_string(),
+                        target: "catenar-proxy-degraded".to_string(),
                         status: "degraded".to_string(),
                     };
                     if let Err(e) = logger.append(&entry) {
@@ -280,7 +280,7 @@ async fn main() -> Result<()> {
         .parse()
         .with_context(|| format!("invalid PROXY_BIND address {bind}"))?;
     let listener = TcpListener::bind(addr).await?;
-    info!("aegis-proxy listening on http://{addr}");
+    info!("catenar-proxy listening on http://{addr}");
 
     loop {
         let (stream, remote_addr) = listener.accept().await?;

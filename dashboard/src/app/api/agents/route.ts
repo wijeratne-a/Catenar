@@ -19,7 +19,7 @@ export async function GET() {
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "X-Aegis-Role": "admin",
+    "X-Catenar-Role": "admin",
   };
   if (process.env.VERIFIER_API_KEY) {
     headers["Authorization"] = `Bearer ${process.env.VERIFIER_API_KEY}`;

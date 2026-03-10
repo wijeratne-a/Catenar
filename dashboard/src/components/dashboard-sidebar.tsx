@@ -21,7 +21,7 @@ export function DashboardSidebar() {
     <aside className="flex w-full shrink-0 flex-col border-b border-r-0 border-border/40 bg-card/50 md:w-56 md:border-b-0 md:border-r">
       <div className="p-4">
         <Link href="/dashboard" className="font-mono font-semibold">
-          Aegis Playground
+          Catenar Playground
         </Link>
       </div>
       <nav className="flex flex-1 flex-row gap-2 overflow-x-auto px-2 py-2 md:flex-col md:space-y-1 md:overflow-x-visible md:py-0">

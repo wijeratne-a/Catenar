@@ -1,6 +1,6 @@
 # Policy Examples
 
-This directory contains sample policy configurations for Aegis.
+This directory contains sample policy configurations for Catenar.
 
 ## default.json
 

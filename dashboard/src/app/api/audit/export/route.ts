@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="audit-export-${orgId}.csv"`,
-        "X-Aegis-Export-Hash": hash,
+        "X-Catenar-Export-Hash": hash,
       },
     });
   }
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
   const hash = computeExportHash(payload);
   return NextResponse.json(payload, {
     headers: {
-      "X-Aegis-Export-Hash": hash,
+      "X-Catenar-Export-Hash": hash,
     },
   });
 }

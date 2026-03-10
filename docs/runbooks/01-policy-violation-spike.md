@@ -4,8 +4,8 @@
 Policy violation rate exceeds baseline (e.g., 3σ above rolling 1h average).
 
 ## Detection
-- Datadog: `avg(last_15m):anomalies(sum:aegis.policy_violation{domain:*}.as_rate(), 'agile', 3) >= 1`
-- Splunk: `index=aegis_audit | timechart span=5m count by domain | streamstats window=12 avg(count) as baseline stdev(count) as std | where count > baseline + 3*std`
+- Datadog: `avg(last_15m):anomalies(sum:catenar.policy_violation{domain:*}.as_rate(), 'agile', 3) >= 1`
+- Splunk: `index=catenar_audit | timechart span=5m count by domain | streamstats window=12 avg(count) as baseline stdev(count) as std | where count > baseline + 3*std`
 
 ## Response
 

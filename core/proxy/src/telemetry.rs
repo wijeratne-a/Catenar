@@ -232,32 +232,32 @@ pub fn render_prometheus_text() -> Option<String> {
         return None;
     }
     let mut out = String::new();
-    out.push_str("# TYPE aegis_proxy_requests_total counter\n");
+    out.push_str("# TYPE catenar_proxy_requests_total counter\n");
     out.push_str(&format!(
-        "aegis_proxy_requests_total {}\n",
+        "catenar_proxy_requests_total {}\n",
         guard.requests_total
     ));
-    out.push_str("# TYPE aegis_proxy_blocked_total counter\n");
+    out.push_str("# TYPE catenar_proxy_blocked_total counter\n");
     out.push_str(&format!(
-        "aegis_proxy_blocked_total {}\n",
+        "catenar_proxy_blocked_total {}\n",
         guard.blocked_total
     ));
-    out.push_str("# TYPE aegis_proxy_timeout_total counter\n");
+    out.push_str("# TYPE catenar_proxy_timeout_total counter\n");
     out.push_str(&format!(
-        "aegis_proxy_timeout_total {}\n",
+        "catenar_proxy_timeout_total {}\n",
         guard.timeout_total
     ));
-    out.push_str("# TYPE aegis_proxy_latency_ms_bucket histogram\n");
-    render_histogram(&mut out, "aegis_proxy_latency_ms", &guard.latency_ms);
-    out.push_str("# TYPE aegis_proxy_policy_eval_ms_bucket histogram\n");
+    out.push_str("# TYPE catenar_proxy_latency_ms_bucket histogram\n");
+    render_histogram(&mut out, "catenar_proxy_latency_ms", &guard.latency_ms);
+    out.push_str("# TYPE catenar_proxy_policy_eval_ms_bucket histogram\n");
     render_histogram(
         &mut out,
-        "aegis_proxy_policy_eval_ms",
+        "catenar_proxy_policy_eval_ms",
         &guard.policy_eval_ms,
     );
-    out.push_str("# TYPE aegis_proxy_policy_eval_p95_ms gauge\n");
+    out.push_str("# TYPE catenar_proxy_policy_eval_p95_ms gauge\n");
     out.push_str(&format!(
-        "aegis_proxy_policy_eval_p95_ms {}\n",
+        "catenar_proxy_policy_eval_p95_ms {}\n",
         histogram_p95_ms(&guard.policy_eval_ms)
     ));
     Some(out)
@@ -265,11 +265,11 @@ pub fn render_prometheus_text() -> Option<String> {
 
 pub fn init_telemetry() -> Result<()> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let json_logs = std::env::var("AEGIS_LOG_FORMAT")
+    let json_logs = std::env::var("CATENAR_LOG_FORMAT")
         .map(|v| v.eq_ignore_ascii_case("json"))
         .unwrap_or(false);
     let service_name =
-        std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "aegis-proxy".to_string());
+        std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "catenar-proxy".to_string());
 
     let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok();
 
@@ -304,14 +304,14 @@ pub fn init_telemetry() -> Result<()> {
             .with_reader(reader)
             .build();
         global::set_meter_provider(meter_provider);
-        let meter = global::meter("aegis-proxy");
+        let meter = global::meter("catenar-proxy");
         let _ = METRICS.set(Metrics {
-            request: meter.u64_counter("aegis.proxy.request").build(),
-            blocked: meter.u64_counter("aegis.proxy.blocked").build(),
-            timeout: meter.u64_counter("aegis.proxy.timeout").build(),
-            violation_rate: meter.u64_counter("aegis.proxy.violation_rate").build(),
+            request: meter.u64_counter("catenar.proxy.request").build(),
+            blocked: meter.u64_counter("catenar.proxy.blocked").build(),
+            timeout: meter.u64_counter("catenar.proxy.timeout").build(),
+            violation_rate: meter.u64_counter("catenar.proxy.violation_rate").build(),
             consecutive_violations: meter
-                .u64_histogram("aegis.proxy.consecutive_violations")
+                .u64_histogram("catenar.proxy.consecutive_violations")
                 .build(),
         });
 

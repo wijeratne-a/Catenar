@@ -59,7 +59,7 @@ impl PayloadPolicyEngine {
         let input_json = serde_json::to_string(input)?;
         engine.set_input(RegoValue::from_json_str(&input_json)?);
 
-        let allow = engine.eval_allow_query("data.aegis.payload.allow".to_string(), false);
+        let allow = engine.eval_allow_query("data.catenar.payload.allow".to_string(), false);
         if allow {
             return Ok(PayloadDecision {
                 allow: true,
@@ -70,19 +70,19 @@ impl PayloadPolicyEngine {
         }
 
         let reason = engine
-            .eval_query("data.aegis.payload.reason".to_string(), false)
+            .eval_query("data.catenar.payload.reason".to_string(), false)
             .ok()
             .and_then(|results| results.result.first().cloned())
             .and_then(|row| row.expressions.first().cloned())
             .and_then(|expr| expr.value.as_string().ok().map(|s| s.to_string()));
         let violation_type = engine
-            .eval_query("data.aegis.payload.violation_type".to_string(), false)
+            .eval_query("data.catenar.payload.violation_type".to_string(), false)
             .ok()
             .and_then(|results| results.result.first().cloned())
             .and_then(|row| row.expressions.first().cloned())
             .and_then(|expr| expr.value.as_string().ok().map(|s| s.to_string()));
         let suggestion = engine
-            .eval_query("data.aegis.payload.suggestion".to_string(), false)
+            .eval_query("data.catenar.payload.suggestion".to_string(), false)
             .ok()
             .and_then(|results| results.result.first().cloned())
             .and_then(|row| row.expressions.first().cloned())
@@ -123,7 +123,7 @@ impl ResponsePolicyEngine {
         let input_json = serde_json::to_string(input)?;
         engine.set_input(RegoValue::from_json_str(&input_json)?);
 
-        let allow = engine.eval_allow_query("data.aegis.response.allow".to_string(), false);
+        let allow = engine.eval_allow_query("data.catenar.response.allow".to_string(), false);
         if allow {
             return Ok(ResponseDecision {
                 allow: true,
@@ -133,14 +133,14 @@ impl ResponsePolicyEngine {
         }
 
         let reason = engine
-            .eval_query("data.aegis.response.reason".to_string(), false)
+            .eval_query("data.catenar.response.reason".to_string(), false)
             .ok()
             .and_then(|results| results.result.first().cloned())
             .and_then(|row| row.expressions.first().cloned())
             .and_then(|expr| expr.value.as_string().ok().map(|s| s.to_string()));
 
         let response_injection = engine
-            .eval_query("data.aegis.response.response_injection".to_string(), false)
+            .eval_query("data.catenar.response.response_injection".to_string(), false)
             .ok()
             .and_then(|results| results.result.first().cloned())
             .and_then(|row| row.expressions.first().cloned())

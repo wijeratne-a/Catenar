@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: catenar-proxy
+spec:
+  selector:
+    app: catenar-proxy
+  ports:
+    - name: http
+      port: {{ .Values.proxy.port }}
+      targetPort: {{ .Values.proxy.port }}

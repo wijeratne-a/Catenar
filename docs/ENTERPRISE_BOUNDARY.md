@@ -1,10 +1,10 @@
-# Aegis Enterprise Boundary
+# Catenar Enterprise Boundary
 
-This document clarifies which capabilities are in the Open Core (free, community) versus Aegis Enterprise (commercial license).
+This document clarifies which capabilities are in the Open Core (free, community) versus Catenar Enterprise (commercial license).
 
 ## Production Resilience (Enterprise)
 
-The Open Core is designed for testing, proof-of-concept, and development. Production deployments requiring crash recovery, deep protocol inspection, or hardware-backed trust require Aegis Enterprise.
+The Open Core is designed for testing, proof-of-concept, and development. Production deployments requiring crash recovery, deep protocol inspection, or hardware-backed trust require Catenar Enterprise.
 
 | Feature | Open Core | Enterprise |
 |---------|-----------|------------|

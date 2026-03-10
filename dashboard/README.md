@@ -1,6 +1,6 @@
-# Aegis Playground
+# Catenar Playground
 
-Next.js 14 demo site for the Aegis Proof-of-Task verification system.
+Next.js 14 demo site for the Catenar Proof-of-Task verification system.
 
 ## Setup
 

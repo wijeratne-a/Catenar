@@ -71,7 +71,7 @@ pub async fn emit(client: &reqwest::Client, config: &WebhookConfig, event: &Webh
         .post(&config.url)
         .timeout(std::time::Duration::from_secs(3))
         .header("content-type", "application/json")
-        .header("X-Aegis-Signature", signature)
+        .header("X-Catenar-Signature", signature)
         .body(payload);
 
     if let Err(err) = request.send().await {

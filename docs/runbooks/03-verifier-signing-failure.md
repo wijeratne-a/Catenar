@@ -5,7 +5,7 @@
 - Logs: "failed to sign" or "key provider error"
 
 ## Causes
-- Missing or invalid `AEGIS_SIGNING_KEY_HEX`
+- Missing or invalid `CATENAR_SIGNING_KEY_HEX`
 - KMS unreachable (if keyProvider: kms)
 - Secret not mounted or wrong key name
 
@@ -13,7 +13,7 @@
 
 1. **Secret exists**:
    ```bash
-   kubectl get secret aegis-signing-key -o yaml
+   kubectl get secret catenar-signing-key -o yaml
    ```
 
 2. **Key format**: Must be 64 hex chars (32 bytes) for Ed25519 private key.
@@ -24,8 +24,8 @@
 
 - **Recreate secret**:
   ```bash
-  kubectl create secret generic aegis-signing-key \
-    --from-literal=AEGIS_SIGNING_KEY_HEX=<64-char-hex> \
+  kubectl create secret generic catenar-signing-key \
+    --from-literal=CATENAR_SIGNING_KEY_HEX=<64-char-hex> \
     --dry-run=client -o yaml | kubectl apply -f -
   ```
 - **Restart verifier** after secret update.

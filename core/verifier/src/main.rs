@@ -1,4 +1,4 @@
-use aegis_api::{keys, run};
+use catenar_api::{keys, run};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

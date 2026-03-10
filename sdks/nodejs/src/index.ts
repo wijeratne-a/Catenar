@@ -1,7 +1,7 @@
 /**
- * Aegis Proof-of-Task SDK for Node.js
+ * Catenar Proof-of-Task SDK for Node.js
  *
- * Route agent traffic through the Aegis proxy and verify traces with the verifier.
+ * Route agent traffic through the Catenar proxy and verify traces with the verifier.
  * Set HTTP_PROXY and HTTPS_PROXY to the proxy URL (e.g. http://127.0.0.1:8080).
  */
 
@@ -63,7 +63,7 @@ export interface RegisterResponse {
   task_token_required?: boolean;
 }
 
-export class AegisClient {
+export class CatenarClient {
   private baseUrl: string;
   private timeout: number;
 
@@ -104,7 +104,7 @@ export class AegisClient {
   }
 }
 
-export interface AegisOptions {
+export interface CatenarOptions {
   baseUrl?: string;
   sessionId?: string;
   userId?: string;
@@ -112,8 +112,8 @@ export interface AegisOptions {
   agentId?: string;
 }
 
-export class Aegis {
-  private client: AegisClient;
+export class Catenar {
+  private client: CatenarClient;
   private policyCommitment: string | null = null;
   private taskToken: string | null = null;
   private domain = "defi";
@@ -122,8 +122,8 @@ export class Aegis {
   private identityContext: IdentityContext = {};
   private executionTrace: TraceEntry[] = [];
 
-  constructor(options: AegisOptions = {}) {
-    this.client = new AegisClient(options.baseUrl ?? "http://127.0.0.1:3000");
+  constructor(options: CatenarOptions = {}) {
+    this.client = new CatenarClient(options.baseUrl ?? "http://127.0.0.1:3000");
     this.identityContext = {
       session_id: options.sessionId,
       user_id: options.userId,

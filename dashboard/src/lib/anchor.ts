@@ -21,12 +21,12 @@ export async function publishCommitment(
 
   if (!githubToken || !gistId) {
     return {
-      anchor_url: `https://example.com/aegis-anchor/${commitment}`,
+      anchor_url: `https://example.com/catenar-anchor/${commitment}`,
       anchored_at: anchoredAt,
     };
   }
 
-  const filename = `aegis-${commitment.slice(2, 14)}.json`;
+  const filename = `catenar-${commitment.slice(2, 14)}.json`;
   const content = JSON.stringify(
     {
       policy_commitment: commitment,

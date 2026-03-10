@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catenar-verifier
+spec:
+  replicas: {{ .Values.verifier.replicas }}
+  selector:
+    matchLabels:
+      app: catenar-verifier
+  template:
+    metadata:
+      labels:
+        app: catenar-verifier
+    spec:
+      {{- if or .Values.verifier.serviceAccount.create .Values.verifier.serviceAccount.name }}
+      serviceAccountName: {{ .Values.verifier.serviceAccount.name | default "catenar-verifier" }}
+      {{- end }}
+      automountServiceAccountToken: {{ .Values.verifier.serviceAccount.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml .Values.verifier.podSecurityContext | nindent 8 }}
+      containers:
+        - name: verifier
+          image: {{ .Values.verifier.image }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            {{- toYaml .Values.verifier.containerSecurityContext | nindent 12 }}
+          ports:
+            - containerPort: {{ .Values.verifier.port }}
+          env:
+            - name: KEY_PROVIDER
+              value: {{ .Values.verifier.keyProvider | quote }}
+            - name: POLICY_ENGINE
+              value: {{ .Values.policy.engine | quote }}
+            - name: POLICY_DIR
+              value: {{ .Values.policy.directory | quote }}
+            - name: CATENAR_CLOUD_URL
+              value: {{ .Values.verifier.catenarCloudUrl | quote }}
+            - name: CATENAR_LOG_FORMAT
+              value: "json"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otel.endpoint | quote }}
+            - name: CATENAR_SIGNING_KEY_HEX
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.verifier.signingKeySecretName | default .Values.secrets.signingKey.name | quote }}
+                  key: CATENAR_SIGNING_KEY_HEX
+          volumeMounts:
+            - name: policy-config
+              mountPath: /etc/catenar/policies
+            - name: verifier-tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.verifier.port }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.verifier.port }}
+          resources:
+            {{- toYaml .Values.verifier.resources | nindent 12 }}
+      volumes:
+        - name: policy-config
+          configMap:
+            name: catenar-policy-config
+        - name: verifier-tmp
+          emptyDir: {}

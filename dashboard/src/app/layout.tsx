@@ -17,7 +17,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Aegis Playground - Proof of Task for AI Agents",
+  title: "Catenar Playground - Proof of Task for AI Agents",
   description: "Interactive demo for cryptographic proof verification",
 };
 

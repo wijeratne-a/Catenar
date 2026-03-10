@@ -49,7 +49,7 @@ export function getTrustedIdentifier(request: NextRequest, prefix: string): stri
  *   // EXPIRE <key> <windowSec> -- auto-cleanup
  *
  * The docker-compose stack and Helm chart include a Redis service gated
- * behind `redis.enabled`. Set REDIS_URL=redis://aegis-redis:6379 in the
+ * behind `redis.enabled`. Set REDIS_URL=redis://catenar-redis:6379 in the
  * deployment environment to activate it.
  *
  * When behind a trusted proxy, configure trust proxy and use a single

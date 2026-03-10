@@ -8,7 +8,7 @@
 
 1. **Pod status**:
    ```bash
-   kubectl get pods -l app=aegis-proxy
+   kubectl get pods -l app=catenar-proxy
    kubectl describe pod <proxy-pod>
    kubectl logs <proxy-pod> --tail=100
    ```

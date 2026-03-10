@@ -1,6 +1,6 @@
-# Contributing to Aegis
+# Contributing to Catenar
 
-Thank you for your interest in contributing to Aegis. This document explains how to report bugs, request features, and submit pull requests.
+Thank you for your interest in contributing to Catenar. This document explains how to report bugs, request features, and submit pull requests.
 
 ## Code of Conduct
 
@@ -10,8 +10,8 @@ By participating, you are expected to uphold a respectful and inclusive environm
 
 ### Reporting Bugs
 
-- Use the [GitHub Issues](https://github.com/wijeratne-a/Aegis/issues) tracker
-- Include Aegis version (from `VERSION` file), OS, and steps to reproduce
+- Use the [GitHub Issues](https://github.com/wijeratne-a/Catenar/issues) tracker
+- Include Catenar version (from `VERSION` file), OS, and steps to reproduce
 - For security vulnerabilities, see [SECURITY.md](SECURITY.md)
 
 ### Requesting Features

@@ -8,7 +8,7 @@ export default function Home() {
     <div className="min-h-screen">
       <header className="border-b border-border/40">
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
-          <span className="font-mono text-lg font-semibold">Aegis</span>
+          <span className="font-mono text-lg font-semibold">Catenar</span>
           <div className="flex gap-4">
             <Link href="/login">
               <Button variant="ghost">Log in</Button>
@@ -81,13 +81,13 @@ export default function Home() {
           <Card>
             <CardContent className="pt-6">
               <pre className="overflow-x-auto rounded-lg bg-muted/50 p-4 font-mono text-sm">
-                <code>{`from aegis_sdk import Aegis
+                <code>{`from catenar_sdk import Catenar
 
-aegis = Aegis(base_url="https://your-verifier-host")
+catenar = Catenar(base_url="https://your-verifier-host")
 policy = {"public_values": {"max_spend": 1000, "restricted_endpoints": ["/admin"]}}
-commitment = aegis.init(policy, domain="defi", public_values=policy["public_values"])
+commitment = catenar.init(policy, domain="defi", public_values=policy["public_values"])
 
-@aegis.trace
+@catenar.trace
 def execute_swap(amount: float):
     return {"txid": "0x..."}
 
@@ -101,7 +101,7 @@ execute_swap(5000)  # Violation`}</code>
 
       <footer className="border-t border-border/40 py-8">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          Aegis Playground — Proof of Task verification for AI agents
+          Catenar Playground — Proof of Task verification for AI agents
         </div>
       </footer>
     </div>

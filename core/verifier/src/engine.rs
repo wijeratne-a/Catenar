@@ -1,6 +1,6 @@
 // ENTERPRISE_EXTENSION_POINT: The following stubs are placeholders for closed-source features.
 
-//! Verification engine for Aegis PoT receipts.
+//! Verification engine for Catenar PoT receipts.
 //!
 //! ## Enterprise Control Plane Boundary
 //!
@@ -157,12 +157,12 @@ pub async fn verify_trace(
     policy_engine: &dyn PolicyEngine,
 ) -> Result<VerifyResponse> {
     let verify_span = info_span!(
-        "aegis.verify",
+        "catenar.verify",
         policy_commitment = %request.policy_commitment,
         domain = %request.agent_metadata.domain,
-        aegis.session_id = tracing::field::Empty,
-        aegis.user_id = tracing::field::Empty,
-        aegis.iam_role = tracing::field::Empty,
+        catenar.session_id = tracing::field::Empty,
+        catenar.user_id = tracing::field::Empty,
+        catenar.iam_role = tracing::field::Empty,
     );
     let _span_guard = verify_span.enter();
 
@@ -245,11 +245,11 @@ pub async fn verify_trace(
 
     if let Some(ref id_ctx) = request.identity_context {
         verify_span.record(
-            "aegis.session_id",
+            "catenar.session_id",
             id_ctx.session_id.as_deref().unwrap_or(""),
         );
-        verify_span.record("aegis.user_id", id_ctx.user_id.as_deref().unwrap_or(""));
-        verify_span.record("aegis.iam_role", id_ctx.iam_role.as_deref().unwrap_or(""));
+        verify_span.record("catenar.user_id", id_ctx.user_id.as_deref().unwrap_or(""));
+        verify_span.record("catenar.iam_role", id_ctx.iam_role.as_deref().unwrap_or(""));
         telemetry::increment_identity_bound(&request.agent_metadata.domain);
     }
 
@@ -400,7 +400,7 @@ async fn send_policy_violation_webhook(
             .header("content-type", "application/json")
             .body(body.clone());
         if let Some(ref sig) = signature {
-            req = req.header("x-aegis-signature", format!("sha256={sig}"));
+            req = req.header("x-catenar-signature", format!("sha256={sig}"));
         }
         match req.send().await {
             Ok(res) => {
@@ -430,7 +430,7 @@ pub async fn report_receipt_if_configured(
     let Some(proof) = &response.proof else {
         return Ok(());
     };
-    let cloud_url = match std::env::var("AEGIS_CLOUD_URL") {
+    let cloud_url = match std::env::var("CATENAR_CLOUD_URL") {
         Ok(v) if !v.trim().is_empty() => v,
         _ => return Ok(()),
     };
@@ -464,7 +464,7 @@ mod tests {
             .mock_async(|when, then| {
                 when.method(POST)
                     .path("/hook")
-                    .header_exists("x-aegis-signature")
+                    .header_exists("x-catenar-signature")
                     .body_contains("\"event\":\"policy_violation_denied\"")
                     .body_contains("\"policy_commitment\":\"0xabc\"");
                 then.status(202);

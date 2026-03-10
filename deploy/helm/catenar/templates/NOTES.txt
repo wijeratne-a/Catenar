@@ -1,0 +1,35 @@
+Thanks for deploying Catenar.
+
+Security defaults in this chart are production-leaning:
+  - proxy ENFORCE_MODE defaults to "strict"
+  - verifier KEY_PROVIDER defaults to "env"
+  - pod/container securityContext and network policies are enabled by default
+
+=== Day 1 Playbook ===
+
+1. Create signing key secret (REQUIRED):
+   kubectl create secret generic {{ .Values.verifier.signingKeySecretName }} \
+     --from-literal=CATENAR_SIGNING_KEY_HEX=<64-byte-hex>
+
+2. Verify proxy and verifier pods are running:
+   kubectl get pods -l app=catenar-proxy
+   kubectl get pods -l app=catenar-verifier
+
+3. Configure SIEM (optional):
+   - Set otelCollector.env.siemOtlpHttpEndpoint for Datadog/OTLP
+   - Set otelCollector.env.splunkHecEndpoint for Splunk HEC
+   - Set otelCollector.env.splunkHecToken
+
+4. Enable mTLS (production):
+   - verifier.tls.enabled: true
+   - Create Secret with verifier TLS certs and verifier.tls.secretName
+   - Create Secret with proxy client cert and verifier.tls.clientCertSecretName
+
+5. Enable WAL forwarding (optional):
+   - proxy.fluentBit.enabled: true
+
+6. Test health:
+   kubectl exec -it deployment/catenar-proxy -- wget -qO- http://localhost:8080/healthz || true
+   kubectl exec -it deployment/catenar-verifier -- wget -qO- http://localhost:3000/healthz || true
+
+Runbooks: docs/runbooks/

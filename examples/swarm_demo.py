@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Swarm / multi-agent demo: Agent A calls Agent B over HTTP; both use Aegis with parent_task_id.
+Swarm / multi-agent demo: Agent A calls Agent B over HTTP; both use Catenar with parent_task_id.
 
 Run with proxy and verifier:
   HTTP_PROXY=http://127.0.0.1:8080 HTTPS_PROXY=... REQUESTS_CA_BUNDLE=... python swarm_demo.py
 
 Agent A: registers policy, does traced work, gets receipt, calls Agent B with receipt_id as parent.
-Agent B: HTTP server that receives X-Aegis-Parent-Task-Id, sets it on Aegis, does traced work.
+Agent B: HTTP server that receives X-Catenar-Parent-Task-Id, sets it on Catenar, does traced work.
 Assert: Agent B's receipt has parent_task_ids containing Agent A's receipt_id.
 """
 
@@ -26,10 +26,10 @@ if _sdk_path not in sys.path:
     sys.path.insert(0, _sdk_path)
 
 import requests
-from aegis_sdk import Aegis
+from catenar_sdk import Catenar
 
 AGENT_B_PORT = 9998
-HEADER_PARENT_TASK_ID = "X-Aegis-Parent-Task-Id"
+HEADER_PARENT_TASK_ID = "X-Catenar-Parent-Task-Id"
 
 
 def _configure_env() -> None:
@@ -53,20 +53,20 @@ def run_agent_b(verifier_url: str) -> HTTPServer:
     class AgentBHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             parent_task_id = self.headers.get(HEADER_PARENT_TASK_ID, "").strip()
-            aegis = Aegis(base_url=verifier_url, batch_size=1, flush_interval_s=0.1, agent_id="agent-b")
+            catenar = Catenar(base_url=verifier_url, batch_size=1, flush_interval_s=0.1, agent_id="agent-b")
             policy = {"public_values": {"restricted_endpoints": ["/admin"]}}
-            aegis.init(policy=policy, domain="defi", public_values=policy["public_values"])
+            catenar.init(policy=policy, domain="defi", public_values=policy["public_values"])
             if parent_task_id:
-                aegis._parent_task_id = parent_task_id
+                catenar._parent_task_id = parent_task_id
 
-            @aegis.trace
+            @catenar.trace
             def sub_task(x: int) -> dict:
                 return {"result": x * 2}
 
             sub_task(42)
-            receipts = aegis.wait_for_results(1, timeout_s=3.0)
+            receipts = catenar.wait_for_results(1, timeout_s=3.0)
             proof = receipts[0].response_body.get("proof", {}) if receipts else {}
-            aegis.close()
+            catenar.close()
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -85,7 +85,7 @@ def run_agent_b(verifier_url: str) -> HTTPServer:
 
 def main() -> None:
     _configure_env()
-    verifier_url = os.environ.get("AEGIS_BASE_URL", "http://127.0.0.1:3000")
+    verifier_url = os.environ.get("CATENAR_BASE_URL", "http://127.0.0.1:3000")
 
     # Start Agent B
     server = run_agent_b(verifier_url)
@@ -94,16 +94,16 @@ def main() -> None:
     time.sleep(0.3)
 
     # Agent A
-    aegis_a = Aegis(base_url=verifier_url, batch_size=1, flush_interval_s=0.1, agent_id="agent-a")
+    catenar_a = Catenar(base_url=verifier_url, batch_size=1, flush_interval_s=0.1, agent_id="agent-a")
     policy = {"public_values": {"restricted_endpoints": ["/admin"]}}
-    aegis_a.init(policy=policy, domain="defi", public_values=policy["public_values"])
+    catenar_a.init(policy=policy, domain="defi", public_values=policy["public_values"])
 
-    @aegis_a.trace
+    @catenar_a.trace
     def agent_a_task() -> dict:
         return {"status": "ok"}
 
     agent_a_task()
-    receipts_a = aegis_a.wait_for_results(1, timeout_s=3.0)
+    receipts_a = catenar_a.wait_for_results(1, timeout_s=3.0)
     if not receipts_a:
         print("FAIL: Agent A got no receipt")
         server.shutdown()
@@ -147,7 +147,7 @@ def main() -> None:
         print(f"  Agent B parent_task_ids: {parent_task_ids}")
         sys.exit(1)
 
-    aegis_a.close()
+    catenar_a.close()
 
 
 if __name__ == "__main__":

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Stress test agent for Aegis Proof-of-Task tracing.
+Stress test agent for Catenar Proof-of-Task tracing.
 
-Uses aegis_intercept to auto-trace HTTP calls. Run with proxy and verifier:
+Uses catenar_intercept to auto-trace HTTP calls. Run with proxy and verifier:
   HTTP_PROXY=http://127.0.0.1:8080 HTTPS_PROXY=... REQUESTS_CA_BUNDLE=... python stress_test_agent.py
 
 With STRESS_TEST_USE_MOCK=1: runs a local mock server (port 9999) to avoid DNS errors.
-  Set AEGIS_STRESS_MOCK_PORT=9999 in proxy env for Docker. For full policy testing use real URLs.
+  Set CATENAR_STRESS_MOCK_PORT=9999 in proxy env for Docker. For full policy testing use real URLs.
 """
 
 from __future__ import annotations
@@ -26,9 +26,9 @@ _sdk_path = str(_root / "sdks" / "python")
 if _sdk_path not in sys.path:
     sys.path.insert(0, _sdk_path)
 
-# CRITICAL: import aegis_intercept FIRST (before httpx) to patch globally
-import aegis_intercept
-from aegis_intercept import get_aegis
+# CRITICAL: import catenar_intercept FIRST (before httpx) to patch globally
+import catenar_intercept
+from catenar_intercept import get_catenar
 
 import httpx
 
@@ -84,10 +84,10 @@ async def run_task(client: httpx.AsyncClient, task_type: str, use_mock: bool) ->
         resp = await client.get(url, timeout=10.0)
         resp.raise_for_status()
         body = resp.json() if "application/json" in resp.headers.get("content-type", "") else {"raw": resp.text[:200]}
-        # Check for 200 with semantic error body (e.g. policy violation, aegis_block)
+        # Check for 200 with semantic error body (e.g. policy violation, catenar_block)
         if resp.status_code == 200:
             if isinstance(body, dict) and (
-                body.get("valid") is False or body.get("aegis_block") is True
+                body.get("valid") is False or body.get("catenar_block") is True
             ):
                 return {"allowed": False, "blocked": True, "error": None, "body": body}
             return {"allowed": True, "blocked": False, "error": None, "body": body}
@@ -106,14 +106,14 @@ async def run_task(client: httpx.AsyncClient, task_type: str, use_mock: bool) ->
 
 async def run_stress_test() -> dict:
     """Run 100 concurrent tasks and return aggregated results."""
-    aegis = get_aegis()
+    catenar = get_catenar()
     policy = {
         "public_values": {
             "max_spend": 10000,
             "restricted_endpoints": ["db.internal.company.com", "admin.company.com"],
         }
     }
-    aegis.init(
+    catenar.init(
         policy=policy,
         domain="defi",
         public_values=policy["public_values"],
@@ -136,10 +136,10 @@ async def run_stress_test() -> dict:
     errors = sum(1 for r in results if r["error"] and not r["blocked"])
 
     # Wait for trace flush and collect receipts
-    receipts = aegis.wait_for_results(len(results), timeout_s=8.0)
+    receipts = catenar.wait_for_results(len(results), timeout_s=8.0)
     receipts_verified = sum(1 for rec in receipts if rec.response_status == 200 and (rec.response_body.get("valid") is True))
 
-    aegis.close()
+    catenar.close()
 
     return {
         "allowed": allowed,
@@ -154,10 +154,10 @@ async def run_stress_test() -> dict:
 def main() -> None:
     use_mock = os.environ.get("STRESS_TEST_USE_MOCK", "").strip() in ("1", "true", "yes")
     if use_mock:
-        print("Aegis Stress Test (mock mode) - 100 concurrent tasks")
-        print("  Mock server on 127.0.0.1:9999 (set AEGIS_STRESS_MOCK_PORT=9999 in proxy)")
+        print("Catenar Stress Test (mock mode) - 100 concurrent tasks")
+        print("  Mock server on 127.0.0.1:9999 (set CATENAR_STRESS_MOCK_PORT=9999 in proxy)")
     else:
-        print("Aegis Stress Test - 100 concurrent tasks")
+        print("Catenar Stress Test - 100 concurrent tasks")
     print("  Mix: 20 LLM, 10 transfer, 5 db_attack (blocked), 65 mixed")
     print()
     if use_mock:

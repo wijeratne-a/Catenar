@@ -71,10 +71,10 @@ fn with_chain_hash<T: Serialize>(value: &T, chain_hash: &str) -> Result<String> 
     }
 }
 
-/// Chain hash: BLAKE3 with derive key "aegis.trace.chain.v1".
+/// Chain hash: BLAKE3 with derive key "catenar.trace.chain.v1".
 /// Third-party verification must use the same key to reproduce hashes.
 fn compute_chain_hash(previous_hash: &str, payload: &str) -> String {
-    let mut hasher = blake3::Hasher::new_derive_key("aegis.trace.chain.v1");
+    let mut hasher = blake3::Hasher::new_derive_key("catenar.trace.chain.v1");
     let prev_bytes = previous_hash.as_bytes();
     let payload_bytes = payload.as_bytes();
     hasher.update(&(prev_bytes.len() as u64).to_le_bytes());
@@ -112,7 +112,7 @@ mod tests {
 
     fn temp_wal_path() -> PathBuf {
         let mut path = std::env::temp_dir();
-        path.push(format!("aegis-proxy-trace-{}.jsonl", uuid::Uuid::new_v4()));
+        path.push(format!("catenar-proxy-trace-{}.jsonl", uuid::Uuid::new_v4()));
         path
     }
 

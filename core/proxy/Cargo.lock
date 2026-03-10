@@ -3,42 +3,6 @@
 version = 4
 
 [[package]]
-name = "aegis-proxy"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "blake3",
- "bytes",
- "chrono",
- "dashmap",
- "futures-util",
- "hex",
- "hmac",
- "http",
- "http-body-util",
- "hyper",
- "hyper-util",
- "jsonschema 0.18.3",
- "lru",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
- "rcgen",
- "regorus",
- "reqwest",
- "rustls",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
- "tokio-rustls",
- "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -385,6 +349,42 @@ name = "bytes"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
+
+[[package]]
+name = "catenar-proxy"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "bytes",
+ "chrono",
+ "dashmap",
+ "futures-util",
+ "hex",
+ "hmac",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "jsonschema 0.18.3",
+ "lru",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "rcgen",
+ "regorus",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tokio-rustls",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+ "uuid",
+]
 
 [[package]]
 name = "cc"

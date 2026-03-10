@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Aegis user-space PoT wedge tests for DeFi and Enterprise flows."""
+"""Catenar user-space PoT wedge tests for DeFi and Enterprise flows."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from typing import Any, Dict
 
 import requests
 
-from aegis_sdk import Aegis, configure_demo_env
+from catenar_sdk import Catenar, configure_demo_env
 
 # ---------------------------------------------------------------------------
 # Colored console output (optional dependency)
@@ -64,7 +64,7 @@ C = _Palette
 # ---------------------------------------------------------------------------
 
 _DEFAULT_PROXY = "http://127.0.0.1:8080"
-_DEFAULT_CA_BUNDLE = "/etc/aegis/ca.crt"
+_DEFAULT_CA_BUNDLE = "/etc/catenar/ca.crt"
 _DEFAULT_VERIFIER = "http://127.0.0.1:3000"
 
 
@@ -93,11 +93,11 @@ def print_verify_result(label: str, result_body: Dict[str, Any]) -> None:
 
 def run_defi_demo() -> None:
     print("=== Test A: DeFi Safe-Pay ===")
-    verifier_base = os.environ.get("AEGIS_BASE_URL", _DEFAULT_VERIFIER)
-    aegis = Aegis(base_url=verifier_base, batch_size=1, flush_interval_s=0.1)
+    verifier_base = os.environ.get("CATENAR_BASE_URL", _DEFAULT_VERIFIER)
+    catenar = Catenar(base_url=verifier_base, batch_size=1, flush_interval_s=0.1)
 
     policy = {"public_values": {"max_spend": 1000, "restricted_endpoints": ["/admin"]}}
-    commitment = aegis.init(
+    commitment = catenar.init(
         policy=policy,
         domain="defi",
         public_values={"max_spend": 1000, "restricted_endpoints": ["/admin"]},
@@ -105,30 +105,30 @@ def run_defi_demo() -> None:
     )
     print(f"[defi] registered policy_commitment={commitment}")
 
-    @aegis.trace
+    @catenar.trace
     def execute_swap(amount: float, token: str, address: str) -> Dict[str, Any]:
         return {"status": "ok", "amount": amount, "token": token, "address": address}
 
     execute_swap(500, "USDC", "0xabc123")
-    first = aegis.wait_for_results(expected=1, timeout_s=3.0)
+    first = catenar.wait_for_results(expected=1, timeout_s=3.0)
     if first:
         print_verify_result("defi:$500", first[0].response_body)
 
     execute_swap(5000, "USDC", "0xabc123")
-    second = aegis.wait_for_results(expected=1, timeout_s=3.0)
+    second = catenar.wait_for_results(expected=1, timeout_s=3.0)
     if second:
         print_verify_result("defi:$5000", second[0].response_body)
 
-    aegis.close()
+    catenar.close()
 
 
 def run_enterprise_demo() -> None:
     print("=== Test B: Enterprise PII-Guard ===")
-    verifier_base = os.environ.get("AEGIS_BASE_URL", _DEFAULT_VERIFIER)
-    aegis = Aegis(base_url=verifier_base, batch_size=1, flush_interval_s=0.1)
+    verifier_base = os.environ.get("CATENAR_BASE_URL", _DEFAULT_VERIFIER)
+    catenar = Catenar(base_url=verifier_base, batch_size=1, flush_interval_s=0.1)
 
     policy = {"public_values": {"restricted_endpoints": ["salary"]}}
-    commitment = aegis.init(
+    commitment = catenar.init(
         policy=policy,
         domain="enterprise",
         public_values={"restricted_endpoints": ["salary"]},
@@ -136,21 +136,21 @@ def run_enterprise_demo() -> None:
     )
     print(f"[enterprise] registered policy_commitment={commitment}")
 
-    @aegis.trace
+    @catenar.trace
     def query_database(table: str) -> Dict[str, Any]:
         return {"table": table, "rows": 12}
 
     query_database("inventory")
-    first = aegis.wait_for_results(expected=1, timeout_s=3.0)
+    first = catenar.wait_for_results(expected=1, timeout_s=3.0)
     if first:
         print_verify_result("enterprise:inventory", first[0].response_body)
 
     query_database("salary")
-    second = aegis.wait_for_results(expected=1, timeout_s=3.0)
+    second = catenar.wait_for_results(expected=1, timeout_s=3.0)
     if second:
         print_verify_result("enterprise:salary", second[0].response_body)
 
-    aegis.close()
+    catenar.close()
 
 
 # ---------------------------------------------------------------------------
@@ -206,8 +206,8 @@ def _run_scripted_demo(*, skip_injection_demo: bool = False) -> None:
     print(C.cyan(_BANNER))
     time.sleep(_PHASE_DELAY)
 
-    base_url = os.environ.get("AEGIS_BASE_URL", _DEFAULT_VERIFIER)
-    aegis = Aegis(
+    base_url = os.environ.get("CATENAR_BASE_URL", _DEFAULT_VERIFIER)
+    catenar = Catenar(
         base_url=base_url,
         batch_size=1,
         flush_interval_s=0.1,
@@ -229,7 +229,7 @@ def _run_scripted_demo(*, skip_injection_demo: bool = False) -> None:
     print()
 
     policy = {"public_values": {"restricted_endpoints": ["/salary"]}}
-    commitment = aegis.init(
+    commitment = catenar.init(
         policy=policy,
         domain="enterprise",
         public_values={"restricted_endpoints": ["/salary"]},
@@ -238,11 +238,11 @@ def _run_scripted_demo(*, skip_injection_demo: bool = False) -> None:
 
     _step(C.green(f"Policy registered.  Commitment hash:"))
     _step(C.bright(f"  {commitment}"))
-    _step(C.green("Policy is now cryptographically anchored on the Aegis verifier."))
+    _step(C.green("Policy is now cryptographically anchored on the Catenar verifier."))
     time.sleep(_PHASE_DELAY)
 
     # Traced function used by both legitimate and malicious steps
-    @aegis.trace
+    @catenar.trace
     def query_database(table: str) -> Dict[str, Any]:
         return {"table": table, "rows": 42}
 
@@ -257,7 +257,7 @@ def _run_scripted_demo(*, skip_injection_demo: bool = False) -> None:
     time.sleep(0.5)
 
     query_database("accounts")
-    step1_results = aegis.wait_for_results(expected=1, timeout_s=4.0)
+    step1_results = catenar.wait_for_results(expected=1, timeout_s=4.0)
 
     step1_ok = step1_results and step1_results[0].response_body.get("valid")
     if step1_ok:
@@ -277,15 +277,15 @@ def _run_scripted_demo(*, skip_injection_demo: bool = False) -> None:
     _step(C.cyan("[Step 2] PII exfiltration attempt"))
     _step("Agent: Attempting to access salary database...   GET /salary")
     time.sleep(0.5)
-    _step("Agent: Request sent through Aegis proxy...")
+    _step("Agent: Request sent through Catenar proxy...")
     time.sleep(0.5)
 
     query_database("salary")
-    step2_results = aegis.wait_for_results(expected=1, timeout_s=4.0)
+    step2_results = catenar.wait_for_results(expected=1, timeout_s=4.0)
 
     step2_valid = step2_results and step2_results[0].response_body.get("valid")
     if not step2_valid:
-        _step(C.red("Aegis Security Block: Unauthorized access to restricted endpoint."))
+        _step(C.red("Catenar Security Block: Unauthorized access to restricted endpoint."))
         reason = (
             step2_results[0].response_body.get("reason", "policy violation")
             if step2_results
@@ -305,7 +305,7 @@ def _run_scripted_demo(*, skip_injection_demo: bool = False) -> None:
     time.sleep(0.5)
 
     query_database("inventory")
-    step3_results = aegis.wait_for_results(expected=1, timeout_s=4.0)
+    step3_results = catenar.wait_for_results(expected=1, timeout_s=4.0)
 
     step3_ok = step3_results and step3_results[0].response_body.get("valid")
     if step3_ok:
@@ -341,14 +341,14 @@ def _run_scripted_demo(*, skip_injection_demo: bool = False) -> None:
                 timeout=5,
             )
             body = resp.text
-            if "AEGIS INTERCEPT" in body or "Malicious Prompt Injection" in body:
-                _step(C.red("Aegis: BLOCKED -- response contained instruction-hijack pattern."))
-                _step(C.red("  Aegis intercepts poisoned responses before they reach the agent."))
+            if "CATENAR INTERCEPT" in body or "Malicious Prompt Injection" in body:
+                _step(C.red("Catenar: BLOCKED -- response contained instruction-hijack pattern."))
+                _step(C.red("  Catenar intercepts poisoned responses before they reach the agent."))
                 _step(C.green("Agent state: Did NOT execute malicious instruction."))
                 _step(C.cyan("  Proof: see dashboard receipts for cryptographic trace."))
             else:
                 _step(C.yellow("Note: Proxy may not have response policy enabled, or demo bypass not set."))
-                _step(C.yellow("  Agent would have received the raw payload (no Aegis response policy in path)."))
+                _step(C.yellow("  Agent would have received the raw payload (no Catenar response policy in path)."))
         except (requests.RequestException, OSError) as e:
             _step(C.yellow(f"Skipping injection demo: proxy unreachable or SSRF block ({e})."))
         finally:
@@ -401,7 +401,7 @@ def _run_scripted_demo(*, skip_injection_demo: bool = False) -> None:
     _step(C.green("policy the operator registered before execution began."))
     print()
 
-    aegis.close()
+    catenar.close()
     print(C.bright("Demo complete."))
 
 
@@ -412,7 +412,7 @@ def _run_scripted_demo(*, skip_injection_demo: bool = False) -> None:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Aegis PoT wedge -- DeFi & Enterprise test flows",
+        description="Catenar PoT wedge -- DeFi & Enterprise test flows",
     )
     parser.add_argument(
         "--demo",

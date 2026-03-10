@@ -16,16 +16,16 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd --gid 10001 aegis \
-    && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin aegis
+RUN groupadd --gid 10001 catenar \
+    && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin catenar
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/aegis-api .
+COPY --from=builder /app/target/release/catenar-api .
 RUN mkdir -p /tmp \
     && chown -R 10001:10001 /app /tmp
 EXPOSE 3000
 
 USER 10001:10001
 
-ENTRYPOINT ["./aegis-api"]
+ENTRYPOINT ["./catenar-api"]
