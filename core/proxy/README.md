@@ -19,7 +19,7 @@ cargo run
 | POLICY_PATH     | policy.json     | JSON policy config                   |
 | POLICY_REGO_PATH| policies/payload.rego | Rego payload policy (optional) |
 | SCHEMA_REGISTRY_PATH | (unset)         | Path to schema registry JSON (optional) |
-| SCHEMA_DIR      | (unset)               | Dir containing registry.json (optional) |
+| SCHEMA_DIR      | (unset)               | Dir containing registry.json (optional; see [schemas/registry.json.example](../../schemas/registry.json.example) for structure) |
 | SEMANTIC_DENY   | true                  | Return 200+semantic body instead of 403 on block |
 | VERIFIER_URL    | http://127.0.0.1:3000 | Verifier for healthcheck      |
 | ENFORCE_MODE    | strict          | strict \| audit_only                 |

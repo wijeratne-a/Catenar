@@ -1,5 +1,3 @@
 {
-    "version": "1.0",
-    "allowed_paths": ["/tmp/catenar_allowed.txt"],
-    "denied_paths": ["/etc/shadow"]
+  "restricted_endpoints": ["admin.company.com", "db.internal"]
 }

@@ -6,7 +6,7 @@ This guide explains where policy is defined in Catenar and how the pieces relate
 
 | Source | Purpose |
 |-------|---------|
-| **policy.json** | Proxy baseline: `restricted_endpoints` loaded at startup. File-based, gitignored by default. |
+| **policy.json** | Proxy baseline: `restricted_endpoints` loaded at startup. Also used by core/crypto for BLAKE3 manifest signing. File-based, gitignored by default. Use `make setup` to create from policy.json.example. |
 | **policies/payload.rego** | Advanced request-level rules (A2T/A2D/A2A). Loaded by proxy at startup. |
 | **policies/response.rego** | Response inspection rules (e.g. prompt injection). Loaded by proxy at startup. |
 | **Agent `catenar.init()`** | Policy registered with verifier: `public_values` (max_spend, restricted_endpoints) and optional Rego. Used for verification. |

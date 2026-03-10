@@ -9,7 +9,7 @@ This example demonstrates:
 
 Run with proxy + verifier up:
   docker compose up -d verifier proxy  # or your equivalent
-  cd agent && python examples/blocked_tool_demo.py
+  cd sdks/python && python examples/blocked_tool_demo.py
 
 Or run without proxy (trace still flows to verifier, block is verifier-side):
   python examples/blocked_tool_demo.py
