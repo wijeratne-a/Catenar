@@ -1,4 +1,4 @@
-.PHONY: setup test lint clean demo build debug verify
+.PHONY: setup test lint clean demo build debug verify test-swarm
 
 setup:
 	@if [ ! -f policy.json ]; then cp policy.json.example policy.json && echo "Created policy.json from policy.json.example"; fi
@@ -15,11 +15,13 @@ build:
 	cd sdks/nodejs && npm run build
 
 test:
-	cd core/verifier && cargo test
-	cd core/proxy && cargo test
-	cd tools/catenar-verify && cargo test
-	cd sdks/python && pytest
-	cd dashboard && npm run lint
+	@set -e; \
+	cd core/verifier && cargo test && echo "Verifier: OK"; \
+	cd ../proxy && cargo test && echo "Proxy: OK"; \
+	cd ../../tools/catenar-verify && cargo test && echo "catenar-verify: OK"; \
+	cd ../../sdks/python && pytest && echo "Python SDK: OK"; \
+	cd ../../dashboard && npm test && npm run lint && echo "Dashboard: OK"; \
+	echo ""; echo "All tests passed."
 
 lint:
 	cd core/proxy && cargo fmt --check
@@ -40,6 +42,11 @@ debug:
 
 verify:
 	cargo run --manifest-path tools/catenar-verify/Cargo.toml -- ./data/proxy-trace.jsonl
+
+test-swarm:
+	@if [ ! -f policy.json ]; then cp policy.json.example policy.json; fi
+	docker compose up -d --wait verifier proxy
+	python examples/swarm_demo.py || (echo "Swarm demo failed"; exit 1)
 
 clean:
 	docker compose down

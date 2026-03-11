@@ -61,7 +61,7 @@ pub struct TraceEntry {
     pub model_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instruction_hash: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "parentTaskId")]
     pub parent_task_id: Option<String>,
 }
 

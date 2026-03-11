@@ -34,3 +34,4 @@ tracing = "0.1"
 tracing-opentelemetry = "0.28"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 uuid = { version = "1", features = ["v4"] }
+constant_time_eq = "0.4"

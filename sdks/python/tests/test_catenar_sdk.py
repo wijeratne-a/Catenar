@@ -78,3 +78,26 @@ def test_send_batch_uses_identity_headers(tmp_path: Path) -> None:
         assert headers["X-Catenar-Session-Id"] == "sess-1"
     finally:
         sdk.close()
+
+
+def test_send_batch_includes_parent_task_id_in_trace(tmp_path: Path) -> None:
+    """Verify that when _parent_task_id is set, the verify payload includes it in execution_trace."""
+    sdk = _new_catenar(tmp_path)
+    sdk._parent_task_id = "agent-a-receipt-uuid"
+    fake = FakeClient()
+    sdk.client = fake  # type: ignore[assignment]
+    try:
+        sdk.policy_commitment = "0xpolicy"
+        sdk.domain = "defi"
+        sdk.public_values = {"restricted_endpoints": ["/admin"]}
+        trace_entry = sdk._build_trace_entry("sub_task", (42,), {}, {"result": 84}, 1.0)
+        assert trace_entry.get("parent_task_id") == "agent-a-receipt-uuid"
+        sent = sdk._send_batch([trace_entry])
+        assert sent is True
+        assert len(fake.verify_calls) == 1
+        payload, _ = fake.verify_calls[0]
+        trace = payload.get("execution_trace", [])
+        assert len(trace) == 1
+        assert trace[0].get("parent_task_id") == "agent-a-receipt-uuid"
+    finally:
+        sdk.close()

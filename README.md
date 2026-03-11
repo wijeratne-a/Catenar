@@ -36,6 +36,8 @@ flowchart TB
 ```bash
 # First run: create policy.json (or run make setup)
 cp policy.json.example policy.json
+# For a stricter quick test (e.g. block database.internal, admin.company.com): cp examples/policies/policy_quickstart.json policy.json
+# Or run ./scripts/ensure-policy.sh (Unix) / .\scripts\ensure-policy.ps1 (Windows) before first docker compose up
 
 # Start infrastructure
 docker compose up -d verifier proxy web prometheus grafana
@@ -46,7 +48,7 @@ docker compose up -d verifier proxy web prometheus grafana
 # Grafana:  http://localhost:3002 (admin/admin)
 ```
 
-**Python agents:** After the proxy starts, it writes the CA to `deploy/certs/ca.crt`. Set `CATENAR_DEMO=1` before running your agent for auto proxy/CA config, or manually:
+**Python agents:** After the proxy starts, it writes the CA to `deploy/certs/ca.crt`. Run your agent from the repo root so `./deploy/certs/ca.crt` resolves, or set `REQUESTS_CA_BUNDLE` to an absolute path. Set `CATENAR_DEMO=1` before running your agent for auto proxy/CA config, or manually:
 
 ```bash
 export HTTP_PROXY=http://127.0.0.1:8080 HTTPS_PROXY=http://127.0.0.1:8080
@@ -55,6 +57,8 @@ export REQUESTS_CA_BUNDLE=./deploy/certs/ca.crt
 ```
 
 See [docs/demo/getting-started.md](docs/demo/getting-started.md) for full demo instructions.
+
+**CISO demo:** `docker compose up -d verifier proxy` → `python examples/bring_your_own_agent.py` from repo root → open Dashboard (http://localhost:3001) Receipts and Alerts.
 
 ## Component Index
 
@@ -77,6 +81,25 @@ Block hosts with `restricted_endpoints` in [policy.json](policy.json.example). N
 
 Rego ([policies/payload.rego](policies/payload.rego)) is optional for advanced rules: SSN detection, A2A trace headers, content inspection.
 
+## Testing
+
+Run all unit and integration tests:
+
+- **Unix:** `make test` or `./scripts/test-all.sh`
+- **Windows:** `.\scripts\test-all.ps1`
+
+Optional: add `--swarm` (Unix) or `-Swarm` (Windows) to run the swarm demo after unit tests (requires verifier and proxy up).
+
+| Component | Tests cover |
+|-----------|-------------|
+| Verifier | Schema, store, engine, HTTP handlers |
+| Proxy | Intercept, trace_log, webhook |
+| Dashboard | Auth, receipt-store, startup |
+| Python SDK | Client, trace, identity |
+| catenar-verify | CLI tool |
+
+**Swarm demo (E2E):** Run with verifier and proxy up (`make demo` or `docker compose up -d verifier proxy`), then `python examples/swarm_demo.py` or `make test-swarm`. Verifies multi-agent parent_task_id lineage.
+
 ## Developer Tools
 
 | Tool | Command | Description |
@@ -86,7 +109,7 @@ Rego ([policies/payload.rego](policies/payload.rego)) is optional for advanced r
 
 ## Examples
 
-- **[examples/bring_your_own_agent.py](examples/bring_your_own_agent.py)**: Minimal BYOA — import `catenar_intercept` first, `init()` policy, then use requests/httpx as usual. See [docs/demo/getting-started.md](docs/demo/getting-started.md#bring-your-own-agent).
+- **[examples/bring_your_own_agent.py](examples/bring_your_own_agent.py)**: Minimal BYOA — import `catenar_intercept` first, `init()` policy, then use requests/httpx as usual. Run from repo root: `python examples/bring_your_own_agent.py` (with verifier and proxy up). Or run from any directory: `./scripts/run-byoa.sh` (Unix) / `.\scripts\run-byoa.ps1` (Windows). See [docs/demo/getting-started.md](docs/demo/getting-started.md#bring-your-own-agent).
 - **[examples/stress_test_agent.py](examples/stress_test_agent.py)**: Stress test with 100+ concurrent HTTP calls. Uses `catenar_intercept` for zero-config tracing. Run with proxy and verifier: `HTTP_PROXY=http://127.0.0.1:8080 python examples/stress_test_agent.py`
 
 ## Open Core

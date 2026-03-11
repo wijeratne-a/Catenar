@@ -280,6 +280,8 @@ pub async fn verify_trace(
         .find_map(|e| e.reasoning_summary.as_deref())
         .map(|s| s.to_string());
 
+    // Lineage is advisory: parent_task_ids are taken from the client trace and are not validated
+    // against existing receipts. A malicious agent can forge parent_task_id.
     let parent_task_ids: Vec<String> = request
         .execution_trace
         .iter()
@@ -450,12 +452,77 @@ pub async fn report_receipt_if_configured(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::{AgentMetadata, PublicValues};
+    use crate::keys::LocalKeyProvider;
+    use crate::policy::{build_policy_engine, PolicyEngine};
+    use crate::schema::{AgentMetadata, PublicValues, TraceEntry};
+    use crate::store::{InMemoryAgentStore, InMemoryPolicyStore};
     use httpmock::Method::POST;
     use httpmock::MockServer;
+    use std::sync::Arc;
 
     /// Test placeholder secret (not a real credential) - satisfies length requirements for scanners.
     const TEST_WEBHOOK_SECRET: &str = "test-secret-value-must-be-at-least-32-bytes!";
+
+    #[tokio::test]
+    async fn proof_includes_parent_task_ids_from_trace() {
+        let policy_json = serde_json::json!({"public_values": {"restricted_endpoints": ["/admin"]}});
+        let policy_bytes = serde_json::to_vec(&policy_json).unwrap();
+        let commitment = format!("0x{}", blake3::hash(&policy_bytes).to_hex());
+
+        let policy_store = Arc::new(InMemoryPolicyStore::new());
+        policy_store
+            .upsert_policy(&commitment, &policy_json)
+            .await
+            .unwrap();
+
+        let agent_store = Arc::new(InMemoryAgentStore::new());
+        let key_provider = Arc::new(LocalKeyProvider::new_random());
+        let policy_engine: Arc<dyn PolicyEngine> = Arc::from(build_policy_engine());
+
+        let request = VerifyRequest {
+            agent_metadata: AgentMetadata {
+                domain: "defi".to_string(),
+                version: "1.0".to_string(),
+            },
+            policy_commitment: commitment.clone(),
+            execution_trace: vec![TraceEntry {
+                action: "function_call".to_string(),
+                target: "sub_task".to_string(),
+                amount: None,
+                table: None,
+                details: None,
+                reasoning_summary: None,
+                model_id: None,
+                instruction_hash: None,
+                parent_task_id: Some("agent-a-receipt-uuid".to_string()),
+            }],
+            public_values: PublicValues {
+                max_spend: None,
+                restricted_endpoints: Some(vec!["/admin".to_string()]),
+            },
+            identity_context: None,
+            task_token: None,
+        };
+
+        let response = verify_trace(
+            &request,
+            Some("agent-b"),
+            policy_store.as_ref(),
+            agent_store.as_ref(),
+            key_provider.as_ref(),
+            policy_engine.as_ref(),
+        )
+        .await
+        .expect("verify_trace");
+
+        assert!(response.valid, "expected valid response");
+        let proof = response.proof.expect("expected proof");
+        assert_eq!(
+            proof.parent_task_ids,
+            Some(vec!["agent-a-receipt-uuid".to_string()]),
+            "proof must include parent_task_ids from trace"
+        );
+    }
 
     #[tokio::test]
     async fn sends_webhook_with_signature() {

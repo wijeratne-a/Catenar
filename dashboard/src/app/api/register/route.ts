@@ -111,9 +111,15 @@ export async function POST(request: NextRequest) {
     const proxyUrl = process.env.CATENAR_PROXY_URL?.replace(/\/$/, "");
     if (proxyUrl && parsed.data.public_values?.restricted_endpoints?.length) {
       try {
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (process.env.PROXY_POLICY_API_KEY) {
+          headers["X-Catenar-Policy-Key"] = process.env.PROXY_POLICY_API_KEY;
+        }
         const proxyRes = await fetch(`${proxyUrl}/policy`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({
             restricted_endpoints: parsed.data.public_values.restricted_endpoints,
           }),

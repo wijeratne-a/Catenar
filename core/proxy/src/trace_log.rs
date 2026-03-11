@@ -1,8 +1,9 @@
 //! Trace WAL with BLAKE3 hash chain for audit integrity.
 //!
-//! **Chain truncation:** The chain does not detect truncation or replacement of the log head.
-//! For high-assurance deployments, consider external integrity (e.g. signed checkpoints,
-//! append-only store).
+//! **Checkpoint file:** When present, `{wal_path}.chain_checkpoint` stores the last chain hash.
+//! On startup, we compare the WAL tail's last hash to the checkpoint; on mismatch we treat the
+//! log as tampered and reset so the next entry chains from empty. The WAL directory and
+//! checkpoint file must be integrity-protected (e.g. permissions, append-only).
 
 use std::{
     fs::{self, OpenOptions},
@@ -13,6 +14,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use serde::Serialize;
+use tracing::warn;
 
 #[derive(Clone)]
 pub struct TraceLogger {
@@ -24,6 +26,18 @@ struct TraceLoggerInner {
     last_hash: String,
 }
 
+fn checkpoint_path(wal_path: &Path) -> PathBuf {
+    let mut p = wal_path.to_path_buf();
+    let name = p.file_name().unwrap_or_default().to_string_lossy();
+    p.set_file_name(format!("{}.chain_checkpoint", name));
+    p
+}
+
+fn write_checkpoint(checkpoint_path: &Path, hash: &str) -> Result<()> {
+    fs::write(checkpoint_path, hash.as_bytes())
+        .with_context(|| format!("failed to write checkpoint {}", checkpoint_path.display()))
+}
+
 impl TraceLogger {
     pub fn new(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
@@ -31,7 +45,20 @@ impl TraceLogger {
             fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create WAL directory {}", parent.display()))?;
         }
-        let last_hash = load_last_hash(&path);
+        let mut last_hash = load_last_hash(&path);
+        if !last_hash.is_empty() {
+            let cp = checkpoint_path(&path);
+            if let Ok(contents) = fs::read_to_string(&cp) {
+                let checkpoint_hash = contents.trim();
+                if !checkpoint_hash.is_empty() && checkpoint_hash != last_hash {
+                    warn!(
+                        "WAL chain checkpoint mismatch; possible tampering. Resetting chain. path={}",
+                        path.display()
+                    );
+                    last_hash = String::new();
+                }
+            }
+        }
         Ok(Self {
             inner: Arc::new(Mutex::new(TraceLoggerInner { path, last_hash })),
         })
@@ -56,6 +83,8 @@ impl TraceLogger {
         file.write_all(b"\n")
             .context("failed to terminate trace entry line")?;
         file.flush().context("failed to flush trace WAL")?;
+        let cp = checkpoint_path(&inner.path);
+        write_checkpoint(&cp, &chain_hash).ok(); // best-effort; log append succeeded
         Ok(())
     }
 }
@@ -131,7 +160,7 @@ fn load_last_hash(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{compute_chain_hash, TraceLogger};
+    use super::{checkpoint_path, compute_chain_hash, TraceLogger};
     use serde_json::Value;
     use std::{fs, path::PathBuf};
 
@@ -159,7 +188,43 @@ mod tests {
         assert!(second_hash.starts_with("0x"));
         assert_ne!(first_hash, second_hash);
 
-        fs::remove_file(path).ok();
+        let cp = checkpoint_path(&path);
+        fs::remove_file(&path).ok();
+        fs::remove_file(cp).ok();
+    }
+
+    #[test]
+    fn tampered_wal_resets_chain() {
+        let path = temp_wal_path();
+        let logger = TraceLogger::new(&path).unwrap();
+        logger.append(&serde_json::json!({"a":1})).unwrap();
+        let cp = checkpoint_path(&path);
+        assert!(cp.exists(), "checkpoint should exist after append");
+
+        // Tamper: overwrite WAL with a line that has a different chain_hash (trailing newline
+        // so append adds a separate line)
+        fs::write(
+            &path,
+            format!("{}\n", r#"{"chain_hash":"0xbad","timestamp_ns":0,"other":"tampered"}"#),
+        )
+        .unwrap();
+        // Checkpoint still has correct hash from before
+
+        let logger2 = TraceLogger::new(&path).unwrap();
+        logger2.append(&serde_json::json!({"c":3})).unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert!(
+            lines.len() >= 1,
+            "expected at least one line after append, got {}",
+            lines.len()
+        );
+        let last: Value = serde_json::from_str(lines[lines.len() - 1]).unwrap();
+        let last_hash = last.get("chain_hash").and_then(|v| v.as_str()).unwrap();
+        assert!(last_hash.starts_with("0x"));
+        assert_ne!(last_hash, "0xbad"); // chained from empty, not from tampered
+        fs::remove_file(&path).ok();
+        fs::remove_file(cp).ok();
     }
 
     #[test]

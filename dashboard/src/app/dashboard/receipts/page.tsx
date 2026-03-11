@@ -221,17 +221,22 @@ export default function ReceiptsPage() {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <label htmlFor="lineage-filter" className="text-sm text-muted-foreground">
-            Lineage (parent_task_id):
-          </label>
-          <Input
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <label htmlFor="lineage-filter" className="text-sm text-muted-foreground">
+              Lineage (parent_task_id):
+            </label>
+            <Input
             id="lineage-filter"
             placeholder="Filter by parent task ID"
             value={lineageFilter}
             onChange={(e) => setLineageFilter(e.target.value)}
             className="max-w-xs font-mono text-sm"
           />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Lineage is best-effort; parent_task_id is not cryptographically validated.
+          </p>
         </div>
         {parentTaskId && (
           <Button variant="ghost" size="sm" onClick={() => setLineageFilter("")}>

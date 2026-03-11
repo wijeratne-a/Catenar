@@ -31,10 +31,12 @@ services:
       CATENAR_STRESS_MOCK_PORT: "9999"
       POLICY_MANAGEMENT_FROM_DASHBOARD: "1"
       CATENAR_CA_PATH: /app/ca/ca.crt
+    entrypoint: ["sh", "-c", "if [ ! -s /app/policy.json ]; then cp /app/policy.json.example /app/policy.json 2>/dev/null || true; fi; exec ./catenar-proxy"]
     volumes:
       - ./deploy/certs:/app/ca
       - ./policies:/app/policies
       - ./policy.json:/app/policy.json
+      - ./policy.json.example:/app/policy.json.example:ro
       - ./data:/app/data
     depends_on:
       verifier:

@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-**First-time setup:** Run `make setup` or `cp policy.json.example policy.json` before `docker compose up`. The proxy requires policy.json (or uses empty policy if missing).
+**First-time setup:** Run `make setup` or `cp policy.json.example policy.json` before `docker compose up`. The proxy requires policy.json (or uses empty policy if missing). For a ready-made blocklist (e.g. database.internal, admin.company.com): `cp examples/policies/policy_quickstart.json policy.json`. Or run `./scripts/ensure-policy.sh` (Unix) / `.\scripts\ensure-policy.ps1` (Windows) before first `docker compose up`.
 
 1. **Start infrastructure** (Docker Compose):
    ```bash
@@ -27,7 +27,7 @@
    cd sdks/python && pip install -e .
    ```
 
-4. **CA Trust:** After the proxy starts, it writes the Root CA to `deploy/certs/ca.crt`. Set `REQUESTS_CA_BUNDLE=./deploy/certs/ca.crt` (Python) or `NODE_EXTRA_CA_CERTS=./deploy/certs/ca.crt` (Node) for HTTPS through the proxy. Or set `CATENAR_DEMO=1` before running agents to auto-configure.
+4. **CA Trust:** After the proxy starts, it writes the Root CA to `deploy/certs/ca.crt`. Set `REQUESTS_CA_BUNDLE=./deploy/certs/ca.crt` (Python) or `NODE_EXTRA_CA_CERTS=./deploy/certs/ca.crt` (Node) for HTTPS through the proxy. The CA path is relative to your current working directory—run agents from repo root or use an absolute path for `REQUESTS_CA_BUNDLE`. Or set `CATENAR_DEMO=1` before running agents to auto-configure.
 
 See [policy-quickstart.md](policy-quickstart.md) for where policy is defined and how dashboard, proxy, and agent relate.
 
@@ -46,6 +46,22 @@ Minimal 2-line integration for existing agents (LangChain, CrewAI, raw Python):
 
 - **[examples/bring_your_own_agent.py](../../examples/bring_your_own_agent.py)** — Import `catenar_intercept` first, then `get_catenar().init(...)`. Your requests/httpx calls are auto-traced.
 - Set `CATENAR_DEMO=1` for minimal env setup (auto proxy + CA config).
+- Run from repo root: `python examples/bring_your_own_agent.py` (with verifier and proxy up).
+
+### A2A (agent calling agent)
+
+When your agent calls another agent, set the parent receipt ID so the chain is recorded: `get_catenar().set_parent_task_id(other_agent_receipt_id)` before making the request. The interceptor will add `X-Catenar-Caller` and `X-Catenar-Trace` and log the call.
+
+### CISO Quick Demo
+
+Fastest path to show Receipts and Alerts:
+
+```bash
+docker compose up -d verifier proxy
+python examples/bring_your_own_agent.py
+```
+
+Then open Dashboard → Receipts and Alerts (http://localhost:3001). Run from repo root so the CA path resolves.
 
 ## Manual Python Demo
 

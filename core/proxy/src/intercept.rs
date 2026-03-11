@@ -30,6 +30,8 @@ use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info, info_span, warn};
 use uuid::Uuid;
 
+use constant_time_eq::constant_time_eq;
+
 use crate::telemetry;
 use crate::trace_log::TraceLogger;
 use crate::webhook::{self, WebhookEvent};
@@ -138,6 +140,29 @@ impl<R: AsyncWrite + Unpin> AsyncWrite for PrependReader<R> {
 /// Rejects values containing bytes < 0x20 or 0x7f (control chars). Returns true if safe to use in headers.
 fn sanitize_header_value(s: &str) -> bool {
     !s.bytes().any(|b| b < 0x20 || b == 0x7f)
+}
+
+/// Returns true if the request has a valid policy API key (when PROXY_POLICY_API_KEY is set).
+fn is_policy_authorized<B>(req: &Request<B>, config: &ProxyConfig) -> bool {
+    let Some(ref expected) = config.policy_api_key else {
+        return true;
+    };
+    let provided = req
+        .headers()
+        .get("x-catenar-policy-key")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.as_bytes())
+        .or_else(|| {
+            req.headers()
+                .get("authorization")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.strip_prefix("Bearer "))
+                .map(|s| s.as_bytes())
+        });
+    match provided {
+        Some(b) if b.len() == expected.len() => constant_time_eq(b, expected.as_bytes()),
+        _ => false,
+    }
 }
 
 /// Returns true if remote_addr is allowed to access policy management endpoints (GET/POST /policy).
@@ -309,6 +334,8 @@ pub struct ProxyConfig {
     pub semantic_deny: bool,
     pub metrics_enabled: bool,
     pub policy_debug: bool,
+    /// Optional API key for policy management (GET/POST /policy, POST /policy/reload). When set, requires X-Catenar-Policy-Key or Bearer.
+    pub policy_api_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -343,6 +370,8 @@ pub struct PayloadRegoInput {
     pub body: Option<JsonValue>,
     pub headers: std::collections::HashMap<String, String>,
     pub identity: IdentityContext,
+    /// Semantic topology: "a2a" when x-catenar-caller+trace present, else "tool".
+    pub topology: String,
 }
 
 /// Input shape for Rego response policy evaluation.
@@ -377,6 +406,8 @@ struct ProxyTraceLogEntrySanitized {
     enforce_mode: String,
     enforcement: String,
     has_identity: bool,
+    /// Semantic topology: "a2a" when x-catenar-caller+trace present, else "tool".
+    topology: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     policy_debug_reason: Option<String>,
 }
@@ -454,6 +485,16 @@ fn insert_request_id_header(headers: &mut http::HeaderMap<HeaderValue>, request_
     }
 }
 
+fn infer_topology(headers: &std::collections::HashMap<String, String>) -> &'static str {
+    let caller = headers.get("x-catenar-caller").map(|s| s.as_str()).unwrap_or("");
+    let trace = headers.get("x-catenar-trace").map(|s| s.as_str()).unwrap_or("");
+    if !caller.is_empty() && !trace.is_empty() {
+        "a2a"
+    } else {
+        "tool"
+    }
+}
+
 fn append_trace_entry(
     state: &ProxyState,
     request_id: String,
@@ -463,6 +504,7 @@ fn append_trace_entry(
     enforcement: &str,
     has_identity: bool,
     policy_debug_reason: Option<&str>,
+    topology: &str,
 ) {
     let trace_entry = ProxyTraceLogEntrySanitized {
         timestamp_ns: Utc::now().timestamp_nanos_opt().unwrap_or_default(),
@@ -473,6 +515,7 @@ fn append_trace_entry(
         enforce_mode: state.config.enforce_mode.as_str().to_string(),
         enforcement: enforcement.to_string(),
         has_identity,
+        topology: topology.to_string(),
         policy_debug_reason: if state.config.policy_debug {
             policy_debug_reason.map(|r| r.to_string())
         } else {
@@ -730,6 +773,12 @@ pub async fn handle(
             }
         }
         if path == "/policy/current" && is_policy_management_allowed(&remote_addr) {
+            if !is_policy_authorized(&req, &state.config) {
+                return Ok(response_with(
+                    StatusCode::UNAUTHORIZED,
+                    r#"{"error":"policy API key required"}"#,
+                ));
+            }
             let live = match state.live_policy.read() {
                 Ok(guard) => guard,
                 Err(e) => {
@@ -749,11 +798,23 @@ pub async fn handle(
             return Ok(response_with(StatusCode::OK, &body.to_string()));
         }
         if path == "/policy" && is_policy_management_allowed(&remote_addr) {
+            if !is_policy_authorized(&req, &state.config) {
+                return Ok(response_with(
+                    StatusCode::UNAUTHORIZED,
+                    r#"{"error":"policy API key required"}"#,
+                ));
+            }
             return handle_policy_get(state).await;
         }
     }
 
     if method == Method::POST && req.uri().path() == "/policy" && is_policy_management_allowed(&remote_addr) {
+        if !is_policy_authorized(&req, &state.config) {
+            return Ok(response_with(
+                StatusCode::UNAUTHORIZED,
+                r#"{"error":"policy API key required"}"#,
+            ));
+        }
         return handle_policy_post(state, req).await;
     }
 
@@ -761,6 +822,12 @@ pub async fn handle(
         && req.uri().path() == "/policy/reload"
         && is_policy_management_allowed(&remote_addr)
     {
+        if !is_policy_authorized(&req, &state.config) {
+            return Ok(response_with(
+                StatusCode::UNAUTHORIZED,
+                r#"{"error":"policy API key required"}"#,
+            ));
+        }
         return handle_policy_reload(state).await;
     }
 
@@ -802,6 +869,7 @@ pub async fn handle(
             "blocked",
             false,
             Some("forwarding to internal or private targets is forbidden"),
+            "tool",
         );
         telemetry::increment_blocked(authority, telemetry::ViolationType::PolicyViolation);
         emit_webhook_event(
@@ -834,6 +902,7 @@ pub async fn handle(
             "blocked",
             false,
             Some("forwarding to internal or private targets is forbidden (DNS SSRF)"),
+            "tool",
         );
         telemetry::increment_blocked(authority, telemetry::ViolationType::PolicyViolation);
         emit_webhook_event(
@@ -914,6 +983,7 @@ pub async fn handle(
         } else {
             None
         },
+        "tool",
     );
 
     if blocked && enforce_mode == EnforceMode::Strict {
@@ -1094,6 +1164,17 @@ pub async fn handle(
             Ok(Ok(res)) => res,
             Ok(Err(e)) => {
                 tracing::warn!("response policy evaluation task panicked: {e}");
+                append_trace_entry(
+                    &state,
+                    request_id.clone(),
+                    &method,
+                    &target,
+                    false,
+                    "policy_eval_error",
+                    has_identity,
+                    Some("policy evaluation failed"),
+                    "tool",
+                );
                 return Ok(Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                     .header("content-type", "application/json")
@@ -1107,6 +1188,17 @@ pub async fn handle(
             }
             Err(_) => {
                 tracing::warn!("response policy evaluation timed out");
+                append_trace_entry(
+                    &state,
+                    request_id.clone(),
+                    &method,
+                    &target,
+                    false,
+                    "policy_eval_timeout",
+                    has_identity,
+                    Some("policy evaluation timed out"),
+                    "tool",
+                );
                 return Ok(Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                     .header("content-type", "application/json")
@@ -1125,6 +1217,7 @@ pub async fn handle(
                     .reason
                     .unwrap_or_else(|| "response policy violation".to_string());
                 telemetry::increment_blocked(&target_host, classify_violation(&reason));
+                let req_headers = headers_to_map(&forward_headers);
                 append_trace_entry(
                     &state,
                     request_id.clone(),
@@ -1134,6 +1227,7 @@ pub async fn handle(
                     "blocked",
                     has_identity,
                     Some(&reason),
+                    infer_topology(&req_headers),
                 );
                 emit_webhook_event(
                     &state,
@@ -1339,6 +1433,7 @@ async fn handle_connect(
             "blocked",
             false,
             Some("CONNECT to internal targets forbidden"),
+            "tool",
         );
         telemetry::increment_blocked(&authority, telemetry::ViolationType::PolicyViolation);
         emit_webhook_event(
@@ -1372,6 +1467,7 @@ async fn handle_connect(
             "blocked",
             false,
             Some("CONNECT to internal targets forbidden (DNS SSRF)"),
+            "tool",
         );
         telemetry::increment_blocked(host, telemetry::ViolationType::PolicyViolation);
         emit_webhook_event(
@@ -1492,6 +1588,7 @@ async fn handle_mitm_request(
         .unwrap_or(&authority)
         .to_string();
     let _latency_guard = RequestLatencyGuard::new();
+    let headers_map = headers_to_map(&parts.headers);
 
     telemetry::increment_request(&host);
 
@@ -1510,6 +1607,7 @@ async fn handle_mitm_request(
                     "blocked",
                     false,
                     Some("request body exceeds 5MB limit"),
+                    infer_topology(&headers_map),
                 );
                 telemetry::increment_blocked(&host, telemetry::ViolationType::PolicyViolation);
                 return Ok(block_response(
@@ -1539,7 +1637,6 @@ async fn handle_mitm_request(
         .or(identity.user_id.as_ref())
         .or(identity.iam_role.as_ref())
         .is_some();
-    let headers_map = headers_to_map(&parts.headers);
 
     if let Some(ref registry) = state.schema_registry {
         if let Some(ref body_val) = body_json {
@@ -1567,6 +1664,7 @@ async fn handle_mitm_request(
                     "blocked",
                     has_identity,
                     Some(&truncated),
+                    infer_topology(&headers_map),
                 );
                 if state.config.policy_debug {
                     debug!(
@@ -1639,8 +1737,9 @@ async fn handle_mitm_request(
         path: path_q.to_string(),
         host: host.clone(),
         body: body_json,
-        headers: headers_map,
+        headers: headers_map.clone(),
         identity: identity.clone(),
+        topology: infer_topology(&headers_map).to_string(),
     };
 
     if let Some(ref engine) = state.payload_engine {
@@ -1656,6 +1755,18 @@ async fn handle_mitm_request(
             Ok(Ok(res)) => res,
             Ok(Err(e)) => {
                 tracing::warn!("payload policy evaluation task panicked: {e}");
+                let target_url = format!("https://{authority}{path_q}");
+                append_trace_entry(
+                    &state,
+                    request_id.clone(),
+                    &method,
+                    &target_url,
+                    false,
+                    "policy_eval_error",
+                    has_identity,
+                    Some("policy evaluation failed"),
+                    infer_topology(&headers_map),
+                );
                 return Ok(Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                     .header("content-type", "application/json")
@@ -1669,6 +1780,18 @@ async fn handle_mitm_request(
             }
             Err(_) => {
                 tracing::warn!("payload policy evaluation timed out");
+                let target_url = format!("https://{authority}{path_q}");
+                append_trace_entry(
+                    &state,
+                    request_id.clone(),
+                    &method,
+                    &target_url,
+                    false,
+                    "policy_eval_timeout",
+                    has_identity,
+                    Some("policy evaluation timed out"),
+                    infer_topology(&headers_map),
+                );
                 return Ok(Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                     .header("content-type", "application/json")
@@ -1701,6 +1824,7 @@ async fn handle_mitm_request(
                     "blocked",
                     has_identity,
                     Some(&reason),
+                    infer_topology(&headers_map),
                 );
                 if state.config.policy_debug {
                     debug!(
@@ -1841,6 +1965,7 @@ async fn handle_mitm_request(
             "blocked",
             has_identity,
             Some("forwarding to internal or private targets is forbidden (DNS SSRF)"),
+            infer_topology(&headers_map),
         );
         telemetry::increment_blocked(&host, telemetry::ViolationType::PolicyViolation);
         emit_webhook_event(
@@ -1883,6 +2008,7 @@ async fn handle_mitm_request(
                     "upstream_timeout",
                     has_identity,
                     Some("upstream timeout"),
+                    infer_topology(&headers_map),
                 );
                 emit_webhook_event(
                     &state,
@@ -1935,6 +2061,7 @@ async fn handle_mitm_request(
                         "upstream_timeout",
                         has_identity,
                         Some("upstream timeout"),
+                        infer_topology(&headers_map),
                     );
                     emit_webhook_event(
                         &state,
@@ -1991,6 +2118,17 @@ async fn handle_mitm_request(
             Ok(Ok(res)) => res,
             Ok(Err(e)) => {
                 tracing::warn!("response policy evaluation task panicked: {e}");
+                append_trace_entry(
+                    &state,
+                    request_id.clone(),
+                    &method,
+                    &target_url,
+                    false,
+                    "policy_eval_error",
+                    has_identity,
+                    Some("policy evaluation failed"),
+                    infer_topology(&headers_map),
+                );
                 return Ok(Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                     .header("content-type", "application/json")
@@ -2004,6 +2142,17 @@ async fn handle_mitm_request(
             }
             Err(_) => {
                 tracing::warn!("response policy evaluation timed out");
+                append_trace_entry(
+                    &state,
+                    request_id.clone(),
+                    &method,
+                    &target_url,
+                    false,
+                    "policy_eval_timeout",
+                    has_identity,
+                    Some("policy evaluation timed out"),
+                    infer_topology(&headers_map),
+                );
                 return Ok(Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                     .header("content-type", "application/json")
@@ -2038,6 +2187,7 @@ async fn handle_mitm_request(
                     "blocked",
                     has_identity,
                     Some(&reason),
+                    infer_topology(&headers_map),
                 );
                 if state.config.policy_debug {
                     debug!(
@@ -2156,6 +2306,7 @@ async fn handle_mitm_request(
         "allowed",
         has_identity,
         None,
+        infer_topology(&headers_map),
     );
     Ok(resp)
 }

@@ -202,6 +202,11 @@ async fn main() -> Result<()> {
         payload_engine: payload_engine.clone(),
     }));
 
+    let policy_api_key = std::env::var("PROXY_POLICY_API_KEY")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
     let state = ProxyState {
         config: Arc::new(ProxyConfig {
             enforce_mode,
@@ -210,6 +215,7 @@ async fn main() -> Result<()> {
             semantic_deny,
             metrics_enabled,
             policy_debug,
+            policy_api_key,
         }),
         webhook: webhook_url.zip(webhook_secret).and_then(|(url, secret)| {
             if secret.len() < 32 {

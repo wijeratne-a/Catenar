@@ -8,6 +8,8 @@ A scripted walkthrough for engineers to present Catenar to CISOs. Follow the ste
 - Dashboard: http://localhost:3001
 - Grafana: http://localhost:3002 (admin / changeme-admin-demo-only)
 
+**Fastest path:** `docker compose up -d verifier proxy` then `python examples/bring_your_own_agent.py` from repo root.
+
 ---
 
 ## Step 1: Architecture (1 min)

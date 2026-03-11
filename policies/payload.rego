@@ -1,5 +1,6 @@
 # Request-level payload policy for Catenar proxy (A2T/A2A/A2D).
 # Evaluates decrypted HTTP request: method, path, host, body, headers, identity.
+# input.topology is available ("a2a" when both x-catenar-caller and x-catenar-trace present, else "tool").
 package catenar.payload
 
 default allow = true

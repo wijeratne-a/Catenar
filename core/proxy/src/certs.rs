@@ -88,7 +88,7 @@ impl RootCa {
         ];
 
         let leaf_key = KeyPair::generate().context("failed to generate leaf key pair")?;
-        let issuer = rcgen::Issuer::from_ca_cert_der(self.cert.der(), &self.key)?;
+        let issuer = rcgen::Issuer::from_ca_cert_der(&self.cert_der(), &self.key)?;
         let leaf_cert = params
             .signed_by(&leaf_key, &issuer)
             .context("failed to sign leaf certificate")?;
@@ -176,6 +176,14 @@ impl DynamicCertResolver {
         let count = self.forge_count.fetch_add(1, Ordering::Relaxed);
         if count >= FORGE_RATE_LIMIT {
             return None;
+        }
+
+        // At capacity: refuse to forge new SNIs to prevent cache/CPU exhaustion
+        {
+            let cache = self.cache.lock().ok()?;
+            if cache.len() >= CERT_CACHE_CAP {
+                return None;
+            }
         }
 
         let ck = Arc::new(self.ca.forge_leaf(sni).ok()?);

@@ -358,6 +358,7 @@ dependencies = [
  "blake3",
  "bytes",
  "chrono",
+ "constant_time_eq",
  "dashmap",
  "futures-util",
  "hex",
