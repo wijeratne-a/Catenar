@@ -33,6 +33,42 @@ Catenar is a Zero Trust Network Access (ZTNA) layer for AI agents. It sits betwe
 5. On allow: forwards request; buffers response; evaluates `policies/response.rego` (bidirectional defense).
 6. Proxy appends to its BLAKE3-chained trace WAL; verifier validates the trace and signs the receipt (Ed25519); webhook notifies dashboard.
 
+## Verifiable Execution Layer (A2A)
+
+The following sequence diagram illustrates the cryptographic proof process during an Agent-to-Agent (A2A) transaction.
+
+```mermaid
+sequenceDiagram
+    participant A as Agent A (Sender)
+    participant P as Catenar Proxy
+    participant R as Rego Engine
+    participant W as Trace WAL
+    participant B as Agent B (Receiver)
+
+    Note over A,B: 1. The Intercept
+    A->>P: JSON payload (tool call / prompt)
+
+    Note over P,R: 2. The Policy Check
+    P->>R: Evaluate against payload.rego
+    R-->>P: Approve
+
+    Note over P,W: 3. State Retrieval
+    P->>W: Read last entry
+    W-->>P: previous_hash
+
+    Note over P: 4. Cryptographic Hashing
+    Note over P: BLAKE3: H(len(prev) || prev || len(payload) || payload)
+    P->>P: Compute new chain hash
+
+    Note over P,W: 5. The Commit
+    P->>W: Append record (payload + new_chain_hash)
+    W-->>P: OK
+
+    Note over P,B: 6. The Forward
+    P->>B: Forward verified request
+    B-->>P: Response
+```
+
 ## Receipt Generation Semantics
 
 - Receipt generation is **best-effort**. If the verifier or proxy crashes after a request is forwarded but before a receipt is produced, that receipt is lost.

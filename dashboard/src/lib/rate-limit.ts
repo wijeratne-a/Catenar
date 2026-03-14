@@ -63,7 +63,7 @@ const MAX_ENTRIES_PER_KEY = 60;
 const timestamps = new Map<string, number[]>();
 
 function cleanup(now: number) {
-  for (const [key, times] of timestamps.entries()) {
+  for (const [key, times] of Array.from(timestamps.entries())) {
     const within = times.filter((t) => now - t < windowMs);
     if (within.length === 0) {
       timestamps.delete(key);
